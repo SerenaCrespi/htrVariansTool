@@ -62,6 +62,14 @@ Object.assign(messages.en,{"alignWord": "Alignment: word-level Levenshtein with 
 Object.assign(messages.fr,{"alignWord": "Alignement : Levenshtein mot à mot avec récupération des passages déplacés.", "alignHybrid": "Alignement : lexical avec une proposition Bertalign précédemment vérifiée.", "alignFallback": "Alignement : solution lexicale de secours."});
 Object.assign(messages.it,{"alignWord": "Allineamento: Levenshtein parola per parola con recupero dei passi spostati.", "alignHybrid": "Allineamento: lessicale con proposta Bertalign precedentemente verificata.", "alignFallback": "Allineamento: riserva lessicale."});
 
+Object.assign(messages.en,{replaceWitnessWarning:"Replacing the ALTO files for this witness will recalculate only its comparison and clear its review decisions. Other witness comparisons will be preserved. Continue?"});
+Object.assign(messages.fr,{replaceWitnessWarning:"Remplacer les fichiers ALTO de ce témoin recalculera uniquement sa comparaison et effacera ses décisions. Les autres comparaisons seront conservées. Continuer ?"});
+Object.assign(messages.it,{replaceWitnessWarning:"Sostituire gli ALTO di questo testimone ricalcola solo il suo confronto e ne azzera le decisioni. I confronti degli altri testimoni saranno conservati. Continuare?"});
+
+Object.assign(messages.en,{alignmentCancelled:"Import or realignment cancelled. The previous comparisons were retained."});
+Object.assign(messages.fr,{alignmentCancelled:"Importation ou réalignement annulé. Les comparaisons précédentes sont conservées."});
+Object.assign(messages.it,{alignmentCancelled:"Importazione o ricalcolo annullato. Conservati i confronti precedenti."});
+
 let imageStatus={A:null},alignmentMethod='',alignmentDraft=null;
 
 messages.en.importHint='Select the dossier folder containing a witness’s ALTO files. The dossier name is used automatically; page and line references are extracted locally.';messages.fr.importHint='Sélectionnez le dossier contenant les fichiers ALTO du témoin. Son nom est repris automatiquement ; les références de page et de ligne sont extraites localement.';messages.it.importHint='Seleziona la cartella dossier con i file ALTO del testimone. Il nome viene ripreso automaticamente; i riferimenti di pagina e riga sono estratti localmente.';
@@ -87,7 +95,26 @@ function t(key,vars={}){let value=(messages[language]||messages.en)[key]||messag
 function setImageStatus(which,status){imageStatus[which]=status;const el=$(`imageCount${which}`);if(!status){el.textContent=t('none');el.removeAttribute('title');return}const good=status.good||[],bad=status.bad||[],short=good.length>3?`${good.slice(0,3).join(', ')} +${good.length-3}`:good.join(', ');el.textContent=bad.length?t('imagePartial',{n:good.length,files:bad.join(', ')}):good.length?t('imageVerified',{n:good.length,files:short}):t('imageInvalid');el.title=[...good.map(x=>`✓ ${x}`),...bad.map(x=>`✗ ${x}`)].join('\n')}
 function setLanguage(code){language=messages[code]?code:'en';document.documentElement.lang=language;document.title=language==='fr'?'PRIMA · Espace de collation':language==='it'?'PRIMA · Spazio di collazione':'PRIMA · Collation workspace';document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('iiifA').placeholder=t('optionalFallback');if(A.length&&B.length){$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[activeWitness]||''})+(alignmentMethod?` · ${t(alignmentMethod)}`:'');$('alignSummary').textContent=t('alignmentSummary',{n:groups.length})}else $('loadedStatus').textContent=t('noCorpus');witnessIds.forEach(id=>{if($(`imageCount${id}`))setImageStatus(id,imageStatus[id]||null)});renderWitnessInputs();renderComparisonControl();renderAutomaticSemanticStatus();renderGenreEditor();if(groups.length){render();renderMovements()}}
 function decodeImage(url){return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>img.naturalWidth&&img.naturalHeight?resolve():reject(Error('empty image'));img.onerror=()=>reject(Error('unreadable image'));img.src=url})}
-async function loadFile(which,fileList){if(!fileList||!fileList.length)return;try{const selected=[...fileList].filter(f=>/\.(xml|alto)$/i.test(f.name));if(!selected.length)throw Error('No ALTO XML files were found in the selected dossier.');const files=await Promise.all(selected.map(async f=>({name:f.webkitRelativePath||f.name,text:await f.text()})));files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'}));rawByWitness[which]=files;if(which==='A')rawA=files;const relative=selected[0].webkitRelativePath||'',folderName=relative.split('/').filter(Boolean)[0]||'',dossier=$(`dossierName${which}`),typedName=dossier?.dataset.userEdited==='true'?dossier.value.trim():'';names[which]=folderName||typedName||selected[0].name.replace(/\.[^.]+$/,'');if(dossier)dossier.value=names[which];editedMode=false;$('loadedStatus').textContent=t('fileSelected',{n:files.length,w:names[which]});if(rawA.length&&witnessIds.slice(1).some(id=>rawByWitness[id]?.length))await runAlign()}catch(e){alert(e.message)}}
+async function loadFile(which,fileList){
+ if(!fileList||!fileList.length)return;
+ let previous=null;
+ const rollback=()=>{if(!previous)return;rawByWitness[which]=previous.files;names[which]=previous.name;editedMode=previous.editedMode;if(which==='A')rawA=previous.files;const dossier=$(`dossierName${which}`);if(dossier)dossier.value=previous.name||'';if($(`file${which}`))$(`file${which}`).value=''};
+ try{
+  const selected=[...fileList].filter(f=>/\.(xml|alto)$/i.test(f.name));
+  if(!selected.length)throw Error('No ALTO XML files were found in the selected dossier.');
+  const files=await Promise.all(selected.map(async f=>({name:f.webkitRelativePath||f.name,text:await f.text()})));
+  files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'}));
+  previous={files:rawByWitness[which],name:names[which],editedMode};
+  rawByWitness[which]=files;if(which==='A')rawA=files;
+  const relative=selected[0].webkitRelativePath||'',folderName=relative.split('/').filter(Boolean)[0]||'',dossier=$(`dossierName${which}`),typedName=dossier?.dataset.userEdited==='true'?dossier.value.trim():'';
+  names[which]=folderName||typedName||selected[0].name.replace(/\.[^.]+$/,'');if(dossier)dossier.value=names[which];
+  editedMode=false;$('loadedStatus').textContent=t('fileSelected',{n:files.length,w:names[which]});
+  if(rawA.length&&witnessIds.slice(1).some(id=>rawByWitness[id]?.length)){
+   const success=await runAlign(false,which==='A'?null:[which]);
+   if(!success)rollback();
+  }
+ }catch(e){rollback();alert(e.message)}
+}
 async function loadImages(which,fileList){if(!fileList)return;const selected=[...fileList];if(!selected.length){images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=[];imageOverrides={};setImageStatus(which,null);return}const status=$(`imageCount${which}`);status.textContent=t('imageLoading');const checked=await Promise.all(selected.map(async file=>{const url=URL.createObjectURL(file);try{await decodeImage(url);return{ok:true,item:{file,url,name:file.name}}}catch(e){URL.revokeObjectURL(url);return{ok:false,name:file.name}}}));const good=checked.filter(x=>x.ok).map(x=>x.item),bad=checked.filter(x=>!x.ok).map(x=>x.name);images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=good;for(const key of Object.keys(imageOverrides))if(key.startsWith(which+':'))delete imageOverrides[key];for(const [key,name] of Object.entries(projectImageLinks)){if(key.startsWith(which+':')){const item=good.find(x=>x.name===name);if(item)imageOverrides[key]=item}}setImageStatus(which,{good:good.map(x=>x.name),bad})}
 function groupItems(arr,g,side){const key=side==='A'?'aItems':'bItems';return Array.isArray(g[key])?g[key]:arr.slice(g[side==='A'?'a0':'b0'],g[side==='A'?'a1':'b1'])}
 function groupText(arr,g,side){return groupItems(arr,g,side).map(x=>x.text).filter(Boolean).join(' ')}
@@ -139,17 +166,20 @@ function wordDiff(a,b){
  return{aa,bb,diff}
 }
 function compareUnit(a,b){if(!a.trim()&&b.trim()){let t=b.split(/\s+/).filter(Boolean);return{aa:[],bb:t.map(t=>({t,c:'var',v:0})),diff:[{a:'∅',b}]}}if(a.trim()&&!b.trim()){let t=a.split(/\s+/).filter(Boolean);return{aa:t.map(t=>({t,c:'var',v:0})),bb:[],diff:[{a,b:'∅'}]}}return wordDiff(a,b)}
-async function runAlign(useEdited=false){
- const hasReview=Object.values(pairReviews).some(x=>Object.values(x.decisions||{}).some(unit=>Object.keys(unit).length>0))||Object.values(decisions).some(unit=>Object.keys(unit).length>0);
- if(!useEdited&&hasReview&&!confirm(t('rerunWarning')))return;
- if(!useEdited&&editedMode)useEdited=true;
- const targets=useEdited?[activeWitness]:witnessIds.slice(1).filter(id=>rawByWitness[id]?.length);
+async function runAlign(useEdited=false,onlyWitnesses=null){
+ // File imports scope the calculation to that witness. Only an explicit full
+ // realignment (or a changed reference) rebuilds every comparison.
+ useEdited=useEdited===true;
+ const incremental=Array.isArray(onlyWitnesses);
+ if(!incremental&&!useEdited&&editedMode)useEdited=true;
+ const targets=useEdited?[activeWitness]:(incremental?onlyWitnesses:witnessIds.slice(1)).filter(id=>witnessIds.includes(id)&&id!=='A'&&rawByWitness[id]?.length);
  if(useEdited?(!A.length||!B.length):(!rawByWitness.A?.length||!targets.length)){$('loadedStatus').textContent=t('alignBoth');$('alignSummary').textContent=t('alignBoth');return false}
+ if(!useEdited&&targets.some(id=>pairResults[id])&&!confirm(t(incremental?'replaceWitnessWarning':'rerunWarning'))){$('loadedStatus').textContent=t('alignmentCancelled');return false;}
  const button=$('alignBtn');button.disabled=true;
  $('loadedStatus').textContent=t('backendWorking');$('alignSummary').textContent=t('readingAlto');
  try{
   if(useEdited){const response=await fetch('/api/align',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sentences:{A,B},names:{A:names.A,B:names[activeWitness]}})});const data=await response.json();if(!response.ok)throw Error(data.error||'Backend error');pairResults[activeWitness]={A:data.witnesses.A,B:data.witnesses.B,alignments:data.alignments,possible_transpositions:data.possible_transpositions||[],frequent_ambiguous_cases:data.frequent_ambiguous_cases||[],alignment_method:data.alignment_method,semantic_fallback:data.semantic_fallback};pairReviews[activeWitness]={decisions:{},movementDecisions:{}};editedMode=false}
-  else {const results=await Promise.all(targets.map(async id=>{const response=await fetch('/api/align',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alto:{A:rawByWitness.A,B:rawByWitness[id]},names:{A:names.A,B:names[id]}})});const data=await response.json();if(!response.ok)throw Error(`${names[id]}: ${data.error||'Backend error'}`);return[id,data]}));pairResults={};pairReviews={};for(const [id,data] of results){pairResults[id]={A:data.witnesses.A,B:data.witnesses.B,alignments:data.alignments,possible_transpositions:data.possible_transpositions||[],frequent_ambiguous_cases:data.frequent_ambiguous_cases||[],alignment_method:data.alignment_method,semantic_fallback:data.semantic_fallback};pairReviews[id]={decisions:{},movementDecisions:{}}}}
+  else {const results=await Promise.all(targets.map(async id=>{const response=await fetch('/api/align',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alto:{A:rawByWitness.A,B:rawByWitness[id]},names:{A:names.A,B:names[id]}})});const data=await response.json();if(!response.ok)throw Error(`${names[id]}: ${data.error||'Backend error'}`);return[id,data]}));const nextResults=incremental?{...pairResults}:{},nextReviews=incremental?{...pairReviews}:{};if(incremental&&pairResults[activeWitness])nextReviews[activeWitness]={decisions,movementDecisions};for(const [id,data] of results){nextResults[id]={A:data.witnesses.A,B:data.witnesses.B,alignments:data.alignments,possible_transpositions:data.possible_transpositions||[],frequent_ambiguous_cases:data.frequent_ambiguous_cases||[],alignment_method:data.alignment_method,semantic_fallback:data.semantic_fallback};nextReviews[id]={decisions:{},movementDecisions:{}}}pairResults=nextResults;pairReviews=nextReviews;}
   const selected=pairResults[activeWitness]?activeWitness:Object.keys(pairResults)[0];activatePair(selected,false);renderComparisonControl();$('loadedStatus').textContent=`${Object.keys(pairResults).length} ${language==='fr'?'comparaisons calculées':language==='it'?'confronti calcolati':'witness comparisons aligned'} · ${t('backendUnits',{a:A.length,b:B.length,w:names[activeWitness]||''})} · ${t(alignmentMethod)}`;$('alignSummary').textContent=t('alignmentSummary',{n:groups.length});render();renderMovements();return true
  }catch(e){$('loadedStatus').textContent=t('error')+e.message;$('alignSummary').textContent=t('alignmentFailed');const err=$('editError');if(err)err.textContent=e.message;return false}
  finally{button.disabled=false}

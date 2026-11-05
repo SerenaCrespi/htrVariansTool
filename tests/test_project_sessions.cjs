@@ -30,7 +30,7 @@ test('save/reopen preserves multi-witness edits, decisions, exports, settings an
  await upload(page,'#fileB',['Nel mezzo del viaggio','una selva oscura','ritrovai la strada']);
  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
  await page.locator('#addWitnessBtn').click();
- // Adding a witness reruns all pairs; record final decisions after that run.
+ // Adding a witness calculates its new comparison without rebuilding earlier pairs.
  page.on('dialog',dialog=>dialog.accept());
  await upload(page,'#fileC',['Nel mezzo del sentiero','una selva oscura','ritrovai la via']);
  await page.waitForFunction(()=>Object.keys(pairResults).length===2&&pendingProjectOperations===0);
@@ -301,4 +301,64 @@ test('automatic fallback failure keeps lexical output and displays the reason',a
  assert.equal(await page.evaluate(()=>groups.some(g=>g.semantic_review)),false);assert.equal(await page.locator('#results article').count(),2);
  await page.locator('#language').selectOption('it');assert.match(await page.locator('#automaticSemanticStatus').textContent(),/non è installato/);
  await page.close();
+});
+
+test('adding a witness aligns only the new pair and preserves previous edits and review decisions',async()=>{
+ const page=await browser.newPage(),errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));
+ page.on('request',request=>{if(request.url().endsWith('/api/align')&&request.method()==='POST')requests.push(request.postDataJSON())});
+ await page.goto(url);await upload(page,'#fileA',['alfa prima lezione','beta seconda lezione']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['alfa prima variante','beta seconda variante']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ await page.locator('#unit-0 .edit').first().click();await page.locator('#editB').fill('alfa prima variante corretta');await page.locator('#saveEditBtn').click();
+ await page.evaluate(()=>{setAll(0,'keep');setAll(1,'ignore');movementCandidates.push({text_a:'passaggio fonte',text_b:'passaggio confrontato',source_a:[],source_b:[],score:0.8,margin:0.2,status:'possible_transposition'});setMovement(movementCandidates.length-1,'confirm');genreRanges=[{start:1,end:1,genre:'prose'},{start:2,end:2,genre:'poetry'}]});
+ const before=await page.evaluate(()=>captureProject()),previousRequests=requests.length;let dialogs=0;
+ page.on('dialog',async dialog=>{dialogs++;await dialog.dismiss()});
+ await page.locator('#addWitnessBtn').click();await upload(page,'#fileC',['alfa prima nuova','beta seconda nuova']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===2&&pendingProjectOperations===0);
+ const after=await page.evaluate(()=>captureProject());
+ assert.equal(dialogs,0);assert.equal(requests.length-previousRequests,1);
+ assert.ok(requests.at(-1).alto.B[0].text.includes('prima nuova'));
+ assert.deepEqual(after.state.pairResults.B,before.state.pairResults.B);
+ assert.deepEqual(after.state.pairReviews.B,before.state.pairReviews.B);
+ assert.deepEqual(after.state.rawByWitness.B,before.state.rawByWitness.B);
+ assert.deepEqual(after.state.genreRanges,before.state.genreRanges);
+ assert.deepEqual(after.state.pairReviews.C,{decisions:{},movementDecisions:{}});
+ await page.locator('#compareWitness').selectOption('C');await page.locator('#compareWitness').selectOption('B');
+ assert.deepEqual(await page.evaluate(()=>decisions),before.state.pairReviews.B.decisions);
+ assert.deepEqual(await page.evaluate(()=>movementDecisions),before.state.pairReviews.B.movementDecisions);
+ assert.match(await page.locator('#unit-0').textContent(),/variante corretta/);
+ const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ assert.deepEqual(await page.evaluate(()=>captureProject()),after);assert.deepEqual(errors,[]);await page.close();
+});
+
+test('a failed new-witness alignment leaves existing pairs and decisions untouched',async()=>{
+ const page=await browser.newPage();await page.goto(url);
+ await upload(page,'#fileA',['alfa prima lezione','beta seconda lezione']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['alfa prima variante','beta seconda variante']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ await page.evaluate(()=>{setAll(0,'keep');setAll(1,'ignore')});const before=await page.evaluate(()=>captureProject());
+ await page.locator('#addWitnessBtn').click();
+ await page.route('**/api/align',route=>route.fulfill({status:400,json:{error:'New witness could not be aligned'}}));
+ await upload(page,'#fileC',['alfa nuova lezione','beta nuova lezione']);await page.waitForFunction(()=>pendingProjectOperations===0);
+ const after=await page.evaluate(()=>captureProject());
+ assert.deepEqual(after.state.pairResults.B,before.state.pairResults.B);assert.deepEqual(after.state.pairReviews.B,before.state.pairReviews.B);
+ assert.deepEqual(Object.keys(after.state.pairResults),['B']);assert.match(await page.locator('#loadedStatus').textContent(),/could not be aligned/);await page.close();
+});
+
+test('replacing one witness is scoped, cancellation restores sources, and explicit realignment still rebuilds all pairs',async()=>{
+ const page=await browser.newPage(),requests=[];page.on('request',r=>{if(r.url().endsWith('/api/align')&&r.method()==='POST')requests.push(r.postDataJSON())});await page.goto(url);
+ await upload(page,'#fileA',['alfa prima lezione','beta seconda lezione']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['alfa prima variante','beta seconda variante']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ await page.locator('#addWitnessBtn').click();await upload(page,'#fileC',['alfa prima diversa','beta seconda diversa']);await page.waitForFunction(()=>Object.keys(pairResults).length===2&&pendingProjectOperations===0);
+ await page.evaluate(()=>{activatePair('C');setAll(0,'ignore');activatePair('B');setAll(0,'keep')});
+ const before=await page.evaluate(()=>captureProject());let count=requests.length;
+ page.once('dialog',dialog=>dialog.dismiss());await upload(page,'#fileB',['alfa prima sostitutiva','beta seconda sostitutiva']);await page.waitForFunction(()=>pendingProjectOperations===0);
+ assert.equal(requests.length,count);assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ page.once('dialog',dialog=>dialog.accept());await upload(page,'#fileB',['alfa prima sostitutiva','beta seconda sostitutiva']);await page.waitForFunction(()=>pendingProjectOperations===0);
+ const replaced=await page.evaluate(()=>captureProject());
+ assert.equal(requests.length,count+1);assert.deepEqual(replaced.state.pairResults.C,before.state.pairResults.C);assert.deepEqual(replaced.state.pairReviews.C,before.state.pairReviews.C);assert.deepEqual(replaced.state.pairReviews.B,{decisions:{},movementDecisions:{}});
+ assert.ok(replaced.state.rawByWitness.B[0].text.includes('sostitutiva'));
+ page.once('dialog',dialog=>dialog.dismiss());await upload(page,'#fileA',['alfa nuova referenza','beta nuova referenza']);await page.waitForFunction(()=>pendingProjectOperations===0);
+ assert.deepEqual(await page.evaluate(()=>captureProject()),replaced);
+ count=requests.length;page.once('dialog',dialog=>dialog.accept());await page.locator('#alignBtn').click();await page.waitForFunction(()=>pendingProjectOperations===0);
+ assert.equal(requests.length,count+2);assert.ok(requests.slice(count).every(body=>body.alto?.A));
+ assert.deepEqual(await page.evaluate(()=>pairReviews),{B:{decisions:{},movementDecisions:{}},C:{decisions:{},movementDecisions:{}}});await page.close();
 });
