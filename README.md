@@ -85,7 +85,12 @@ restart the Python backend, then refresh the browser with **Ctrl+Shift+R**
 
 Review units are interface rows. They can contain multiple ALTO lines or only a
 fragment of one line; they are not automatically paragraphs or verses.
-Recalculating an alignment can clear review decisions, so save the project first.
+Saving an **Edit text** correction recalculates differences only for that unit.
+Decisions in other units and other witness comparisons are preserved. The app
+asks before resetting existing decisions in the edited unit. Saving without
+changing either reading keeps all decisions and source groupings intact.
+Recalculating the complete alignment can clear review decisions, so save the
+project before doing that.
 
 ## Save, reopen and export
 

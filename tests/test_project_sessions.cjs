@@ -210,3 +210,54 @@ test('prose joins review units while poetry preserves original ALTO lines after 
  const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
  assert.equal(await download(page,'#exportTei'),poetry);assert.deepEqual(errors,[]);await page.close();
 });
+
+test('editing one reading keeps earlier/later decisions and other witness reviews through save/reopen',async()=>{
+ const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
+ await upload(page,'#fileA',['alfa prima lezione','beta seconda lezione','gamma terza lezione','delta quarta lezione']);
+ await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['alfa prima variante','beta seconda variante','gamma terza variante','delta quarta variante']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ await page.locator('#addWitnessBtn').click();await upload(page,'#fileC',['alfa prima diversa','beta seconda diversa','gamma terza diversa','delta quarta diversa']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===2&&pendingProjectOperations===0);
+ await page.evaluate(()=>{activatePair('C');groups.forEach((_,i)=>setAll(i,i%2?'keep':'ignore'));activatePair('B');groups.forEach((_,i)=>setAll(i,i%2?'ignore':'keep'))});
+ const before=await page.evaluate(()=>captureProject());assert.equal(before.state.pairResults.B.alignments.length,4);
+ assert.equal(Object.keys(before.state.pairReviews.B.decisions).length,4);
+ let warning='';page.once('dialog',async dialog=>{warning=dialog.message();await dialog.accept()});
+ await page.locator('#unit-2 .edit').first().click();await page.locator('#editB').fill('gamma terza variante corretta');await page.locator('#saveEditBtn').click();
+ await page.waitForFunction(()=>!document.getElementById('editB'));
+ const after=await page.evaluate(()=>captureProject());
+ assert.match(warning,/only for this unit/);
+ const expectedDecisions=structuredClone(before.state.pairReviews.B.decisions);delete expectedDecisions[2];
+ assert.deepEqual(after.state.pairReviews.B.decisions,expectedDecisions);
+ assert.deepEqual(after.state.pairReviews.C,before.state.pairReviews.C);
+ assert.deepEqual(after.state.pairResults.C,before.state.pairResults.C);
+ assert.deepEqual(after.state.pairResults.B.alignments[2].aItems,before.state.pairResults.B.alignments[2].aItems);
+ for(const i of [0,1,3])assert.deepEqual(after.state.pairResults.B.alignments[i],before.state.pairResults.B.alignments[i]);
+ assert.ok(await page.locator('#unit-0 .token.keep').count());assert.ok(await page.locator('#unit-1 .token.ignore').count());assert.ok(await page.locator('#unit-2 .token.var').count());
+ await page.locator('#compareWitness').selectOption('C');await page.locator('#compareWitness').selectOption('B');
+ assert.deepEqual(await page.evaluate(()=>decisions),expectedDecisions);
+ const results=JSON.parse(await download(page,'#exportJson'));
+ const exported=Object.values(results.comparisons)[0].alignments;
+ for(const i of [0,1,3])assert.deepEqual(exported[i].decisions,expectedDecisions[i]);assert.deepEqual(exported[2].decisions,{});
+ const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ assert.deepEqual(await page.evaluate(()=>captureProject()),after);
+ assert.deepEqual(errors,[]);await page.close();
+});
+
+test('unchanged, cancelled and invalid text edits preserve decisions and original source fragments',async()=>{
+ const page=await browser.newPage();await page.goto(url);
+ await upload(page,'#fileA',['prima lezione originale','seconda lezione originale']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['prima lezione diversa','seconda lezione diversa']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ // Preserve an existing manually split source line when the editor saves no changes.
+ await page.evaluate(()=>{const g=groups[0],item=g.aItems[0];g.aItems=[{...item,text:'prima'},{...item,text:'lezione originale'}];setAll(0,'keep');setAll(1,'ignore')});
+ const before=await page.evaluate(()=>captureProject());let warnings=0;
+ page.on('dialog',async dialog=>{warnings++;await dialog.dismiss()});
+ await page.locator('#unit-0 .edit').first().click();await page.locator('#saveEditBtn').click();
+ await page.waitForFunction(()=>!document.getElementById('editB'));
+ assert.equal(warnings,0);assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ await page.locator('#unit-0 .edit').first().click();await page.locator('#editB').fill('nuova lettura');await page.locator('#saveEditBtn').click();
+ assert.equal(warnings,1);assert.equal(await page.locator('#editB').isVisible(),true);
+ assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ await page.locator('#editA').fill('');await page.locator('#editB').fill('');await page.locator('#saveEditBtn').click();
+ assert.match(await page.locator('#editError').textContent(),/At least one/);assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ await page.close();
+});

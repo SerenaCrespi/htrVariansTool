@@ -49,6 +49,10 @@ Object.assign(messages.en,{"rangesHint": "Assign prose, poetry or drama to inter
 Object.assign(messages.fr,{"rangesHint": "Attribuez prose, poésie ou théâtre aux intervalles numérotés. Les unités de prose sont réunies en un paragraphe par intervalle ; la poésie conserve les lignes ALTO originales du témoin de référence. Couvrez toutes les unités une seule fois et dans l’ordre.", "poetrySourceMapping": "Le texte de référence révisé ne peut pas être relié sans ambiguïté aux lignes ALTO originales. Vérifiez les corrections avant l’export poétique.", "poetryLineBoundary": "Cet intervalle poétique coupe une ligne ALTO originale. Incluez toutes les unités de cette ligne dans le même intervalle poétique."});
 Object.assign(messages.it,{"rangesHint": "Assegna prosa, poesia o teatro agli intervalli delle unità numerate. La prosa viene unita in un paragrafo per intervallo; la poesia conserva le righe ALTO originali del testimone di riferimento. Copri tutte le unità una sola volta e in ordine.", "poetrySourceMapping": "Il testo di riferimento revisionato non può essere ricondotto senza ambiguità alle righe ALTO originali. Verifica le correzioni prima di esportare la poesia.", "poetryLineBoundary": "Questo intervallo poetico taglia una riga ALTO originale. Includi tutte le unità di quella riga nello stesso intervallo poetico."});
 
+Object.assign(messages.en,{editResetWarning:"Saving this correction will reset decisions only for this unit. Decisions in other units will be kept. Continue?"});
+Object.assign(messages.fr,{editResetWarning:"Enregistrer cette correction réinitialisera uniquement les décisions de cette unité. Les autres unités conserveront leurs décisions. Continuer ?"});
+Object.assign(messages.it,{editResetWarning:"Salvare questa correzione azzererà solo le decisioni di questa unità. Le decisioni delle altre unità saranno mantenute. Continuare?"});
+
 let imageStatus={A:null},alignmentMethod='',alignmentDraft=null;
 
 messages.en.importHint='Select the dossier folder containing a witness’s ALTO files. The dossier name is used automatically; page and line references are extracted locally.';messages.fr.importHint='Sélectionnez le dossier contenant les fichiers ALTO du témoin. Son nom est repris automatiquement ; les références de page et de ligne sont extraites localement.';messages.it.importHint='Seleziona la cartella dossier con i file ALTO del testimone. Il nome viene ripreso automaticamente; i riferimenti di pagina e riga sono estratti localmente.';
@@ -181,7 +185,23 @@ function rowHTML(which,arr,tokens,idx){
 function setVariant(i,k,action){decisions[i]=decisions[i]||{};decisions[i][k]=action;render()}
 function setAll(i,action){let g=groups[i],d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B'));decisions[i]=decisions[i]||{};d.diff.forEach((_,k)=>decisions[i][k]=action);render()}
 function editUnit(i){let g=groups[i],a=groupText(A,g,'A'),b=groupText(B,g,'B');let modal=$('modal');modal.innerHTML=`<div class="iiif-modal"><div class="iiif-box" style="max-width:760px"><div class="iiif-head"><span>${t('editUnit',{n:i+1})}</span><button class="btn btn-outline" onclick="$('modal').innerHTML=''">${t('close')}</button></div><p class="status-note">${t('editHint')}</p><label>${esc(names.A)}<textarea id="editA" class="form-control" style="width:100%;min-height:80px;margin:5px 0 12px">${esc(a)}</textarea></label><label>${esc(names[activeWitness])}<textarea id="editB" class="form-control" style="width:100%;min-height:80px;margin:5px 0 12px">${esc(b)}</textarea></label><div id="editError" class="status-note" role="alert"></div><button id="saveEditBtn" class="btn btn-green" onclick="saveEdit(${i})">${t('saveRecalc')}</button></div></div>`}
-async function saveEdit(i){if(Object.values(decisions).some(unit=>Object.keys(unit).length>0)&&!confirm(t('editResetWarning')))return;const g=groups[i],aa=$('editA').value.trim(),bb=$('editB').value.trim();if(!aa&&!bb){$('editError').textContent=t('editBothEmpty');return}const refRefs=groupItems(A,g,'A').flatMap(x=>x.refs||[]).map(ref=>({...ref,line_text:aa})),witRefs=groupItems(B,g,'B').flatMap(x=>x.refs||[]).map(ref=>({...ref,line_text:bb}));g.aItems=aa?[{text:aa,refs:refRefs}]:[];g.bItems=bb?[{text:bb,refs:witRefs}]:[];g.similarity=aa&&bb?similarityClient(aa,bb):0;pairResults[activeWitness].alignments=groups;decisions={};pairReviews[activeWitness]={decisions,movementDecisions};render();$('modal').innerHTML='';$('loadedStatus').textContent+=' · '+t('manualSaved')}
+async function saveEdit(i){
+ const g=groups[i],aa=$('editA').value.trim(),bb=$('editB').value.trim();
+ if(!aa&&!bb){$('editError').textContent=t('editBothEmpty');return}
+ const previousA=groupText(A,g,'A'),previousB=groupText(B,g,'B');
+ if(aa===previousA&&bb===previousB){$('modal').innerHTML='';return}
+ if(Object.keys(decisions[i]||{}).length&&!confirm(t('editResetWarning')))return;
+ // Word-difference indices can change in the edited unit. Invalidate its
+ // decisions only; other units and witness comparisons retain their reviews.
+ // Keep the unedited side's ALTO fragments intact as well.
+ if(aa!==previousA){const refs=groupItems(A,g,'A').flatMap(x=>x.refs||[]).map(ref=>({...ref,line_text:aa}));g.aItems=aa?[{text:aa,refs}]:[]}
+ if(bb!==previousB){const refs=groupItems(B,g,'B').flatMap(x=>x.refs||[]).map(ref=>({...ref,line_text:bb}));g.bItems=bb?[{text:bb,refs}]:[]}
+ g.similarity=aa&&bb?similarityClient(aa,bb):0;
+ pairResults[activeWitness].alignments=groups;
+ decisions={...decisions};delete decisions[i];
+ pairReviews[activeWitness]={decisions,movementDecisions};
+ render();$('modal').innerHTML='';$('loadedStatus').textContent+=' · '+t('manualSaved');
+}
 function cloneLineItem(item){return {...item,refs:(item.refs||[]).map(ref=>({...ref}))}}
 function draftItems(g,side){return g[side==='A'?'aItems':'bItems']||[]}
 function adjustUnit(i){alignmentDraft={index:i,sourceSide:'B',groups:groups.map(g=>({...g,aItems:groupItems(A,g,'A').map(cloneLineItem),bItems:groupItems(B,g,'B').map(cloneLineItem)}))};renderAdjustUnit()}
