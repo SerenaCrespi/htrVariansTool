@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software in research, please cite it as follows."
+title: "PRIMA Textual Collation"
+version: "0.1"
+date-released: 2026-11-02
+authors:
+  - family-names: Roulet
+    given-names: Theo
+  - family-names: Crespi
+    given-names: Serena
+license: MIT
+repository-code: "https://scm.univ-tours.fr/cesr/prima/collation"
