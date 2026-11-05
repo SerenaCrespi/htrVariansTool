@@ -19,7 +19,7 @@ before(async()=>{
 after(async()=>{if(browser)await browser.close();if(server&&server.exitCode===null){server.kill();await once(server,'exit')}if(dir)await rm(dir,{recursive:true,force:true})});
 const alto=lines=>`<alto><Layout><Page ID="p" WIDTH="1000" HEIGHT="1000"><TextBlock>${lines.map((text,i)=>`<TextLine ID="l${i}" HPOS="10" VPOS="${i*30}" WIDTH="500" HEIGHT="20"><String CONTENT="${text}"/></TextLine>`).join('')}</TextBlock></Page></Layout></alto>`;
 const upload=(page,id,text)=>page.locator(id).setInputFiles({name:'page.xml',mimeType:'text/xml',buffer:Buffer.from(alto(text))});
-async function download(page,button){const pending=page.waitForEvent('download');await page.locator(button).click();const file=await pending;return readFile(await file.path(),'utf8')}
+async function download(page,button){const pending=page.waitForEvent('download');await page.locator(button).click();if(button==='#exportTei')await page.locator('#confirmTeiExport').click();const file=await pending;return readFile(await file.path(),'utf8')}
 async function open(page,content){await page.locator('#projectFile').setInputFiles({name:'project.json',mimeType:'application/json',buffer:Buffer.from(content)});await page.waitForFunction(()=>pendingProjectOperations===0)}
 
 test('save/reopen preserves multi-witness edits, decisions, exports, settings and image links',async()=>{
@@ -49,7 +49,9 @@ test('save/reopen preserves multi-witness edits, decisions, exports, settings an
  await page.locator('.iiif-options summary').click();
  await page.locator('#iiifA').fill('https://example.org/a.jpg');
  await page.locator('#iiifB').fill('https://example.org/b.jpg');
+ await page.locator('#exportTei').click();
  await page.locator('#genre').selectOption('poetry');
+ await download(page,'#confirmTeiExport');
  const image={name:'page.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6D2sAAAAASUVORK5CYII=','base64')};
  await page.locator('#imagesA').setInputFiles(image);await page.waitForFunction(()=>pendingProjectOperations===0);
  await page.evaluate(()=>{imageOverrides['A:page.xml']=images.A[0]});
@@ -122,18 +124,18 @@ test('mixed prose/poetry and name-based IDs export consistently and survive proj
  await page.locator('#dossierNameA').fill('BNCF II.IV.232');await page.locator('#dossierNameA').dispatchEvent('change');
  await page.locator('#dossierNameB').fill('Tordi.435');await page.locator('#dossierNameB').dispatchEvent('change');
  await page.evaluate(()=>setAll(1,'keep'));
- await page.locator('#teiRangesPanel > summary').click();
- await page.locator('#addGenreRange').click();
+ await page.locator('#exportTei').click();
+ await page.locator('#teiMixed').check();
  await page.locator('[data-range="0"][data-field="end"]').fill('1');await page.locator('[data-range="0"][data-field="end"]').dispatchEvent('change');
  await page.locator('#addGenreRange').click();
  await page.locator('[data-range="1"][data-field="end"]').fill('3');await page.locator('[data-range="1"][data-field="end"]').dispatchEvent('change');
  await page.locator('[data-range="1"][data-field="genre"]').selectOption('poetry');
  await page.locator('#addGenreRange').click();
+ const tei=await download(page,'#confirmTeiExport');
  const json=JSON.parse(await download(page,'#exportJson'));
  assert.equal(json.reference.id,'BNCF_II.IV.232');assert.deepEqual(json.witnesses,{'Tordi.435':'Tordi.435'});
  assert.deepEqual(Object.keys(json.comparisons),['Tordi.435']);
  assert.deepEqual(json.structure.ranges,[{start:1,end:1,genre:'prose'},{start:2,end:3,genre:'poetry'},{start:4,end:4,genre:'prose'}]);
- const tei=await download(page,'#exportTei');
  const parsed=await page.evaluate(xml=>{
   const doc=new DOMParser().parseFromString(xml,'application/xml');
   const ids=[...doc.getElementsByTagName('witness')].map(el=>el.getAttribute('xml:id'));
@@ -151,4 +153,35 @@ test('mixed prose/poetry and name-based IDs export consistently and survive proj
  const legacy=JSON.parse(saved);delete legacy.state.genreRanges;await open(page,JSON.stringify(legacy));
  assert.deepEqual(await page.evaluate(()=>genreRanges),[]);
  assert.deepEqual(errors,[]);await page.close();
+});
+
+
+test('TEI dialog defers download, cancels changes and keeps invalid intervals open',async()=>{
+ const page=await browser.newPage();await page.goto(url);
+ await upload(page,'#fileA',['prima riga','seconda riga']);await page.locator('#addWitnessBtn').click();
+ await upload(page,'#fileB',['prima riga','seconda riga']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ assert.equal(await page.locator('#teiRangesPanel').count(),0);
+ assert.equal(await page.locator('#genre').isVisible(),false);
+ const before=await page.evaluate(()=>captureProject());let downloads=0;page.on('download',()=>downloads++);
+ await page.locator('#exportTei').click();assert.equal(downloads,0);
+ assert.equal(await page.locator('#teiExportDialog').isVisible(),true);
+ await page.locator('#genre').selectOption('drama');await page.locator('#cancelTeiExport').click();
+ assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ await page.locator('#exportTei').click();await page.locator('#teiMixed').check();
+ await page.locator('[data-range="0"][data-field="start"]').fill('2');
+ await page.locator('#confirmTeiExport').click();
+ assert.equal(await page.locator('#teiExportDialog').isVisible(),true);assert.equal(downloads,0);
+ assert.match(await page.locator('#teiExportError').textContent(),/Intervals must cover/);
+ assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ await page.keyboard.press('Escape');await page.waitForFunction(()=>teiExportDraft===null);
+ await page.locator('#exportTei').click();await page.locator('#genre').selectOption('drama');
+ const xml=await download(page,'#confirmTeiExport');assert.match(xml,/<sp><p>prima riga seconda riga<\/p><\/sp>/);
+ assert.equal(await page.locator('#teiExportDialog').isVisible(),false);
+ assert.equal(await page.evaluate(()=>uniformGenre),'drama');assert.equal(downloads,1);
+ // Narrow screens retain usable interval controls inside the dialog.
+ await page.setViewportSize({width:390,height:844});await page.locator('#exportTei').click();await page.locator('#teiMixed').check();
+ const box=await page.locator('#teiExportDialog').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=390);
+ assert.equal(await page.evaluate(()=>{const el=document.getElementById('teiExportDialog');return el.scrollWidth<=el.clientWidth}),true);
+ await page.locator('#cancelTeiExport').click();await page.close();
 });

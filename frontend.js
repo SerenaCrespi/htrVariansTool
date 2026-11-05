@@ -41,6 +41,10 @@ Object.assign(messages.en,{"teiStructure": "TEI structure", "mixedStructure": "M
 Object.assign(messages.fr,{"teiStructure": "Structure TEI", "mixedStructure": "Texte mêlant prose et poésie", "rangesHint": "Attribuez prose, poésie ou théâtre à des intervalles d’unités numérotées de la comparaison de référence. Chaque unité poétique devient un vers : ajustez les regroupements si nécessaire. Couvrez toutes les unités une seule fois et dans l’ordre.", "rangeBasis": "{n} unités de « {reference} », numérotées comme dans sa comparaison avec « {witness} ». Consultez la liste ci-dessous depuis une autre comparaison.", "fromUnit": "De l’unité", "toUnit": "À l’unité", "addRange": "Ajouter un intervalle", "removeRange": "Supprimer", "uniformStructure": "Structure uniforme", "uniformHint": "Sans intervalles : tout le texte utilise {genre}.", "rangesValid": "Les intervalles couvrent toutes les unités sans lacunes ni chevauchements.", "rangeCoverage": "Les intervalles doivent couvrir toutes les unités à partir de 1, une seule fois et dans l’ordre, sans lacunes ni chevauchements.", "variantCrossesBoundary": "Une variante conservée traverse une limite de vers ou de structure. Ajustez l’alignement ou les intervalles avant l’export.", "referenceUnitList": "Numérotation des unités et lignes sources", "exportIds": "Identifiants des témoins à l’export :"});
 Object.assign(messages.it,{"teiStructure": "Struttura TEI", "mixedStructure": "Testo misto: prosa e poesia", "rangesHint": "Assegna prosa, poesia o teatro a intervalli delle unità numerate del confronto di riferimento. Ogni unità poetica diventa un verso: correggi prima i raggruppamenti se necessario. Tutte le unità devono essere coperte una sola volta e in ordine.", "rangeBasis": "{n} unità di “{reference}”, numerate come nel confronto con “{witness}”. Usa la lista qui sotto quando visualizzi un altro confronto.", "fromUnit": "Da unità", "toUnit": "A unità", "addRange": "Aggiungi intervallo", "removeRange": "Rimuovi", "uniformStructure": "Usa struttura uniforme", "uniformHint": "Nessun intervallo: tutto il testo usa {genre}.", "rangesValid": "Gli intervalli coprono tutte le unità senza buchi o sovrapposizioni.", "rangeCoverage": "Gli intervalli devono coprire tutte le unità da 1 all’ultima, una sola volta e in ordine, senza buchi o sovrapposizioni.", "variantCrossesBoundary": "Una variante conservata attraversa un confine di verso o struttura. Correggi l’allineamento o gli intervalli prima di esportare.", "referenceUnitList": "Numerazione delle unità e righe fonte", "exportIds": "Identificativi dei testimoni negli export:"});
 
+Object.assign(messages.en,{"exportSetup": "Export TEI", "exportSetupHint": "Choose one genre for the whole text, or define intervals for mixed prose, poetry and drama.", "wholeTextGenre": "One genre for the whole text", "intervalGenres": "Different genres by interval", "downloadTei": "Download TEI"});
+Object.assign(messages.fr,{"exportSetup": "Exporter en TEI", "exportSetupHint": "Choisissez un genre pour tout le texte ou définissez des intervalles de prose, poésie et théâtre.", "wholeTextGenre": "Un seul genre pour tout le texte", "intervalGenres": "Genres différents par intervalle", "downloadTei": "Télécharger le TEI"});
+Object.assign(messages.it,{"exportSetup": "Esporta TEI", "exportSetupHint": "Scegli un genere per tutto il testo oppure definisci intervalli di prosa, poesia e teatro.", "wholeTextGenre": "Un solo genere per tutto il testo", "intervalGenres": "Generi diversi per intervallo", "downloadTei": "Scarica TEI"});
+
 let imageStatus={A:null},alignmentMethod='',alignmentDraft=null;
 
 messages.en.importHint='Select the dossier folder containing a witness’s ALTO files. The dossier name is used automatically; page and line references are extracted locally.';messages.fr.importHint='Sélectionnez le dossier contenant les fichiers ALTO du témoin. Son nom est repris automatiquement ; les références de page et de ligne sont extraites localement.';messages.it.importHint='Seleziona la cartella dossier con i file ALTO del testimone. Il nome viene ripreso automaticamente; i riferimenti di pagina e riga sono estratti localmente.';
@@ -61,7 +65,7 @@ messages.en.alignmentSummary='{n} alignments proposed against the reference · g
 messages.en.alignBoth='Load the reference ALTO files and at least one other witness.';messages.fr.alignBoth='Chargez le dossier ALTO de référence et au moins un autre témoin.';messages.it.alignBoth='Carica il dossier ALTO di riferimento e almeno un altro testimone.';
 messages.en.empty='Select the reference dossier and at least one other witness to begin.';messages.en.noCorpus=messages.en.empty;messages.fr.empty='Sélectionnez le dossier de référence et au moins un autre témoin pour commencer.';messages.fr.noCorpus=messages.fr.empty;messages.it.empty='Seleziona il dossier di riferimento e almeno un altro testimone per iniziare.';messages.it.noCorpus=messages.it.empty;
 
-let language='en',viewFilter='all',genreRanges=[];
+let language='en',viewFilter='all',genreRanges=[],uniformGenre='prose',teiExportDraft=null;
 function t(key,vars={}){let value=(messages[language]||messages.en)[key]||messages.en[key]||key;return value.replace(/\{(\w+)\}/g,(_,name)=>vars[name]??'')}
 function setImageStatus(which,status){imageStatus[which]=status;const el=$(`imageCount${which}`);if(!status){el.textContent=t('none');el.removeAttribute('title');return}const good=status.good||[],bad=status.bad||[],short=good.length>3?`${good.slice(0,3).join(', ')} +${good.length-3}`:good.join(', ');el.textContent=bad.length?t('imagePartial',{n:good.length,files:bad.join(', ')}):good.length?t('imageVerified',{n:good.length,files:short}):t('imageInvalid');el.title=[...good.map(x=>`✓ ${x}`),...bad.map(x=>`✗ ${x}`)].join('\n')}
 function setLanguage(code){language=messages[code]?code:'en';document.documentElement.lang=language;document.title=language==='fr'?'PRIMA · Espace de collation':language==='it'?'PRIMA · Spazio di collazione':'PRIMA · Collation workspace';document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('iiifA').placeholder=t('optionalFallback');if(A.length&&B.length){$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[activeWitness]||''})+(alignmentMethod?` · ${t(alignmentMethod)}`:'');$('alignSummary').textContent=t('alignmentSummary',{n:groups.length})}else $('loadedStatus').textContent=t('noCorpus');witnessIds.forEach(id=>{if($(`imageCount${id}`))setImageStatus(id,imageStatus[id]||null)});renderWitnessInputs();renderComparisonControl();renderGenreEditor();if(groups.length){render();renderMovements()}}
@@ -199,34 +203,55 @@ function exportReferenceUnits(){
  return pair?pair.alignments.map(g=>({text:groupText(pair.A,g,'A'),refs:groupItems(pair.A,g,'A').flatMap(item=>item.refs||[])})):[];
 }
 function exportIdentifiers(){return VariansExport.witnessIdentifiers(['A',...Object.keys(pairResults)],names)}
-function effectiveGenreRanges(total){return genreRanges.length?genreRanges:[{start:1,end:total,genre:$('genre').value}]}
+function effectiveGenreRanges(total,ranges=genreRanges,genre=uniformGenre){return ranges.length?ranges:[{start:1,end:total,genre}]}
 function exportError(error){return t(['rangeCoverage','variantCrossesBoundary'].includes(error.message)?error.message:'error')+(['rangeCoverage','variantCrossesBoundary'].includes(error.message)?'':error.message)}
 function renderGenreEditor(){
- if(!$('genreRangeRows'))return;
+ if(!teiExportDraft)return;
+ const draft=teiExportDraft;
+ $('teiUniform').checked=draft.mode==='uniform';$('teiMixed').checked=draft.mode==='mixed';
+ $('uniformGenreField').hidden=draft.mode!=='uniform';$('mixedGenreFields').hidden=draft.mode!=='mixed';
+ $('genre').value=draft.genre;
  const units=exportReferenceUnits(),first=Object.keys(pairResults)[0];
  $('rangeBasis').textContent=units.length?t('rangeBasis',{n:units.length,reference:names.A,witness:names[first]}):t('noAlignment');
  $('addGenreRange').disabled=!units.length;
- $('genreRangeRows').innerHTML=genreRanges.map((r,i)=>`<div class="genre-range-row"><label>${t('fromUnit')}<input class="form-control" type="number" min="1" max="${units.length}" value="${r.start}" data-range="${i}" data-field="start"></label><label>${t('toUnit')}<input class="form-control" type="number" min="1" max="${units.length}" value="${r.end}" data-range="${i}" data-field="end"></label><label>${t('teiStructure')}<select class="form-control" data-range="${i}" data-field="genre">${['prose','poetry','drama'].map(g=>`<option value="${g}" ${g===r.genre?'selected':''}>${t(g)}</option>`).join('')}</select></label><button class="btn btn-outline" type="button" data-remove-range="${i}">${t('removeRange')}</button></div>`).join('');
+ $('genreRangeRows').innerHTML=draft.ranges.map((r,i)=>`<div class="genre-range-row"><label>${t('fromUnit')}<input class="form-control" type="number" min="1" max="${units.length}" value="${r.start}" data-range="${i}" data-field="start"></label><label>${t('toUnit')}<input class="form-control" type="number" min="1" max="${units.length}" value="${r.end}" data-range="${i}" data-field="end"></label><label>${t('teiStructure')}<select class="form-control" data-range="${i}" data-field="genre">${['prose','poetry','drama'].map(g=>`<option value="${g}" ${g===r.genre?'selected':''}>${t(g)}</option>`).join('')}</select></label><button class="btn btn-outline" type="button" data-remove-range="${i}">${t('removeRange')}</button></div>`).join('');
  updateGenreRangeStatus();
  $('referenceUnitList').innerHTML=units.map((u,i)=>`<p><b>${i+1}.</b> ${esc(u.text)||'—'}<br><span class="status-note">${esc(refs([u]))}</span></p>`).join('');
  const idMap=exportIdentifiers();
  $('witnessExportIds').textContent=t('exportIds')+' '+Object.entries(idMap).map(([id,value])=>`${names[id]} → ${value}`).join(' · ');
 }
 function updateGenreRangeStatus(){
- const units=exportReferenceUnits();
- let status=t('uniformHint',{genre:t($('genre').value)});
- if(genreRanges.length)try{VariansExport.validateGenreRanges(genreRanges,units.length);status=t('rangesValid')}catch(error){status=exportError(error)}
+ if(!teiExportDraft)return;
+ const units=exportReferenceUnits(),draft=teiExportDraft;
+ $('teiExportError').textContent='';
+ let status=t('uniformHint',{genre:t(draft.genre)});
+ if(draft.mode==='mixed')try{VariansExport.validateGenreRanges(draft.ranges,units.length);status=t('rangesValid')}catch(error){status=exportError(error)}
  $('genreRangeStatus').textContent=status;
 }
-function buildTEI(){
+function buildTEI(ranges=genreRanges,genre=uniformGenre){
  const ids=Object.keys(pairResults);if(!ids.length)throw Error(t('noAlignment'));
  const referenceUnits=exportReferenceUnits(),idMap=exportIdentifiers();
  const edits=ids.flatMap(selectedVariantEdits).map(e=>e.id===ids[0]?{...e,referenceUnit:e.group}:e);
- const body=VariansExport.renderGenreRanges(referenceUnits,effectiveGenreRanges(referenceUnits.length),(start,end)=>VariansExport.renderApparatus(referenceUnits,edits,ids,idMap,start,end));
+ const body=VariansExport.renderGenreRanges(referenceUnits,effectiveGenreRanges(referenceUnits.length,ranges,genre),(start,end)=>VariansExport.renderApparatus(referenceUnits,edits,ids,idMap,start,end));
  const witnesses=['A',...ids].map(id=>`<witness xml:id="${esc(idMap[id])}">${esc(names[id])}</witness>`).join('');
  return `<?xml version="1.0" encoding="UTF-8"?>\n<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader><fileDesc><titleStmt><title>${esc(t('teiTitle'))}</title></titleStmt><publicationStmt><p>${esc(t('teiExport'))}</p></publicationStmt><sourceDesc><listWit>${witnesses}</listWit></sourceDesc></fileDesc></teiHeader><text><body>${body}</body></text></TEI>`;
 }
-function exportTEI(){try{download(t('teiName'),buildTEI(),'application/tei+xml')}catch(error){alert(exportError(error))}}
+function exportTEI(){
+ if(!Object.keys(pairResults).length){alert(t('noAlignment'));return}
+ teiExportDraft={genre:uniformGenre,ranges:genreRanges.map(r=>({...r})),mode:genreRanges.length?'mixed':'uniform'};
+ $('teiExportError').textContent='';renderGenreEditor();$('teiExportDialog').showModal();
+}
+function confirmTeiExport(){
+ if(!teiExportDraft)return;
+ const draft=teiExportDraft;
+ try{
+  const ranges=draft.mode==='mixed'?draft.ranges:[];
+  if(draft.mode==='mixed')VariansExport.validateGenreRanges(ranges,exportReferenceUnits().length);
+  const xml=buildTEI(ranges,draft.genre);
+  uniformGenre=draft.genre;genreRanges=ranges.map(r=>({...r}));
+  download(t('teiName'),xml,'application/tei+xml');$('teiExportDialog').close();teiExportDraft=null;
+ }catch(error){$('teiExportError').textContent=exportError(error)}
+}
 function buildJSONExport(){
  const ids=Object.keys(pairResults);if(!ids.length)throw Error(t('noAlignment'));
  const idMap=exportIdentifiers(),ranges=effectiveGenreRanges(exportReferenceUnits().length);
@@ -249,7 +274,7 @@ const PROJECT_FORMAT='varians-project',PROJECT_VERSION=1,MAX_PROJECT_BYTES=100*1
 function captureProject(){
  const reviews=Object.fromEntries(Object.keys(pairResults).map(id=>[id,currentReview(id)]));
  const state={witnessIds,names:Object.fromEntries(witnessIds.map(id=>[id,names[id]])),rawByWitness:Object.fromEntries(witnessIds.map(id=>[id,rawByWitness[id]])),pairResults,pairReviews:reviews,activeWitness,editedMode,
-  language,viewFilter,genre:$('genre').value,genreRanges,
+  language,viewFilter,genre:uniformGenre,genreRanges,
   iiif:Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||''])),
   imageFiles:Object.fromEntries(witnessIds.map(id=>[id,images[id]?.length?images[id].map(x=>x.name):(projectImageFiles[id]||[])])),
   imageLinks:{...projectImageLinks,...Object.fromEntries(Object.entries(imageOverrides).map(([key,item])=>[key,item.name]))}};
@@ -319,7 +344,8 @@ function restoreProject(s){
  A=[];B=[];groups=[];decisions={};movementCandidates=[];movementDecisions={};ambiguousCases=[];
  alignmentDraft=null;alignmentMethod='';$('modal').innerHTML='';$('recurringText').textContent='';
  $('fileA').value='';$('imagesA').value='';$('dossierNameA').value=names.A;$('dossierNameA').dataset.userEdited='true';
- genreRanges=s.genreRanges||[];
+ if($('teiExportDialog').open)$('teiExportDialog').close();teiExportDraft=null;
+ genreRanges=s.genreRanges||[];uniformGenre=s.genre;
  language=s.language;$('language').value=language;viewFilter=s.viewFilter;$('resultFilter').value=viewFilter;$('genre').value=s.genre;
  setLanguage(language);
  for(const id of witnessIds){$(`iiif${id}`).value=s.iiif[id];$(`dossierName${id}`).dataset.userEdited='true'}
@@ -353,11 +379,14 @@ $('saveProject').onclick=()=>{try{saveProject()}catch(error){$('projectStatus').
 $('openProject').onclick=()=>{if(pendingProjectOperations){alert(t('projectBusy'));return}$('projectFile').click()};
 $('projectFile').onchange=event=>openProjectFile(event.target.files[0]);
 
-$('genreRangeRows').onchange=event=>{const {range,field}=event.target.dataset;if(range===undefined||!genreRanges[Number(range)]||!['start','end','genre'].includes(field))return;genreRanges[Number(range)][field]=field==='genre'?event.target.value:Number(event.target.value);updateGenreRangeStatus()};
-$('genreRangeRows').onclick=event=>{const index=event.target.dataset.removeRange;if(index!==undefined){genreRanges.splice(Number(index),1);renderGenreEditor()}};
-$('addGenreRange').onclick=()=>{const total=exportReferenceUnits().length;if(!total)return;const start=genreRanges.length?genreRanges.at(-1).end+1:1;genreRanges.push({start,end:Math.max(start,total),genre:$('genre').value});renderGenreEditor()};
-$('clearGenreRanges').onclick=()=>{genreRanges=[];renderGenreEditor()};
-$('genre').onchange=renderGenreEditor;
+$('genreRangeRows').onchange=event=>{if(!teiExportDraft)return;const {range,field}=event.target.dataset;if(range===undefined||!teiExportDraft.ranges[Number(range)]||!['start','end','genre'].includes(field))return;teiExportDraft.ranges[Number(range)][field]=field==='genre'?event.target.value:Number(event.target.value);updateGenreRangeStatus()};
+$('genreRangeRows').onclick=event=>{if(!teiExportDraft)return;const index=event.target.dataset.removeRange;if(index!==undefined){teiExportDraft.ranges.splice(Number(index),1);renderGenreEditor()}};
+$('addGenreRange').onclick=()=>{if(!teiExportDraft)return;const total=exportReferenceUnits().length;if(!total)return;const ranges=teiExportDraft.ranges,start=ranges.length?ranges.at(-1).end+1:1;ranges.push({start,end:Math.max(start,total),genre:teiExportDraft.genre});renderGenreEditor()};
+for(const mode of ['teiUniform','teiMixed'])$(mode).onchange=()=>{if(!teiExportDraft)return;teiExportDraft.mode=$(mode).value;if(teiExportDraft.mode==='mixed'&&!teiExportDraft.ranges.length)teiExportDraft.ranges=[{start:1,end:exportReferenceUnits().length,genre:teiExportDraft.genre}];renderGenreEditor()};
+$('genre').onchange=event=>{if(teiExportDraft)teiExportDraft.genre=event.target.value};
+$('cancelTeiExport').onclick=()=>{$('teiExportDialog').close();teiExportDraft=null};
+$('teiExportDialog').addEventListener('close',()=>{teiExportDraft=null});
+$('confirmTeiExport').onclick=confirmTeiExport;
 
 const addWitnessButton=$('addWitnessBtn');if(addWitnessButton)addWitnessButton.addEventListener('click',event=>{event.preventDefault();try{addWitness()}catch(error){console.error('Could not add witness:',error);const status=$('loadedStatus');if(status)status.textContent=`Could not add witness: ${error.message}`}});$('fileA').onchange=e=>loadFile('A',e.target.files);$('dossierNameA').onchange=e=>{e.target.dataset.userEdited='true';names.A=e.target.value.trim()||names.A;if(groups.length){render();renderMovements()}};$('imagesA').onchange=e=>loadImages('A',e.target.files);$('alignBtn').onclick=runAlign;$('exportTei').onclick=exportTEI;$('exportJson').onclick=exportJSON;$('recurringBtn').onclick=showRecurring;$('nextPendingBtn').onclick=nextPending;$('resultFilter').onchange=e=>{viewFilter=e.target.value;render()};$('resetBtn').onclick=()=>{decisions={};pairReviews[activeWitness]={decisions,movementDecisions};render()};$('language').onchange=e=>setLanguage(e.target.value);
 window.loadFile=loadFile;window.addWitness=addWitness;window.alignmentDraft=alignmentDraft;window.adjustUnit=adjustUnit;window.selectDraftSide=selectDraftSide;window.updateDraftPositions=updateDraftPositions;window.saveAdjustedUnit=saveAdjustedUnit;window.splitDraftLine=splitDraftLine;window.moveDraftLine=moveDraftLine;window.setMovement=setMovement;window.openMovementImages=openMovementImages;window.setVariant=setVariant;window.setAll=setAll;window.editUnit=editUnit;window.saveEdit=saveEdit;window.openImages=openImages;window.goToUnit=goToUnit;window.$=$;

@@ -66,16 +66,20 @@ invalid-file rejection, cancellation, and resuming before alignment.
 
 ## Mixed prose/poetry and witness identifiers
 
-Open **Mixed prose and poetry** to add intervals with **From unit**, **To unit**,
-and a structure (prose, poetry or drama). For example, units 1–12 can be prose,
-13–28 poetry, and 29–45 prose. Edit the first interval's end before adding the
-next one. Intervals must cover every unit once, in order, with no gaps or overlaps;
-invalid intervals block export and show an explanation. **Use uniform structure**
-clears the intervals and restores the single structure selected beside the export
-button.
+Click **Export full TEI text** to open the export dialog. Choose **One genre for
+the whole text** (prose, poetry or drama) or **Different genres by interval**.
+For mixed text, use **From unit**, **To unit**, and the genre selector for each
+interval. For example, units 1–12 can be prose, 13–28 poetry, and 29–45 prose.
+Edit the first interval's end before adding the next one. Intervals must cover
+every unit once, in order, with no gaps or overlaps. Invalid intervals keep the
+dialog open and show an explanation.
+
+Click **Download TEI** to export and retain these settings for future exports and
+project saves. **Cancel** or Escape discards changes made in the dialog. Opening
+the dialog alone does not download a file or change the saved structure.
 
 Numbering follows the reference units in the **first witness comparison**, named
-in the panel. Expand **Reference unit numbering and source lines** to see the
+in the dialog. Expand **Reference unit numbering and source lines** to see the
 numbered readings and their ALTO references, especially when viewing a different
 comparison. A unit is a review row, which may contain multiple physical lines.
 Each poetry unit exports as one `<l>` inside `<lg>`; check and adjust grouping to
@@ -92,7 +96,7 @@ using the **same identifiers in both formats and in every TEI `wit` reference**.
 Valid names such as `Tordi.435` are preserved; `BNCF II.IV.232` becomes
 `BNCF_II.IV.232`. XML-incompatible characters become underscores, names beginning
 with a number receive `witness_`, and collisions receive `_2`, `_3`, etc.
-The original display names are retained. The panel previews the exported IDs.
+The original display names are retained. The dialog previews the exported IDs.
 Projects retain internal comparison keys for reopening; those keys are distinct
 from the public identifiers in results exports.
 
