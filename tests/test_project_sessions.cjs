@@ -185,3 +185,28 @@ test('TEI dialog defers download, cancels changes and keeps invalid intervals op
  assert.equal(await page.evaluate(()=>{const el=document.getElementById('teiExportDialog');return el.scrollWidth<=el.clientWidth}),true);
  await page.locator('#cancelTeiExport').click();await page.close();
 });
+
+test('prose joins review units while poetry preserves original ALTO lines after manual regrouping',async()=>{
+ const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
+ const lines=['prima riga poetica','seconda riga poetica','terza riga poetica'];
+ await upload(page,'#fileA',lines);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',lines);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ // Put two original source lines in one displayed unit, leaving an empty row.
+ await page.evaluate(()=>{adjustUnit(0);selectDraftSide('A')});
+ await page.locator('#moveSource').selectOption('1:0');await page.locator('#moveTarget').selectOption('0');await page.locator('#movePosition').selectOption('end');
+ await page.getByRole('button',{name:'Move line to selected unit',exact:true}).click();
+ await page.getByRole('button',{name:'Save alignment',exact:true}).click();
+ // Split one physical line into two review fragments. It must remain one verse.
+ await page.evaluate(()=>{adjustUnit(0);selectDraftSide('A')});await page.locator('#modal details summary').click();
+ await page.locator('#splitMarker').fill('prima');await page.getByRole('button',{name:'Split selected line',exact:true}).click();
+ await page.getByRole('button',{name:'Save alignment',exact:true}).click();
+ assert.equal(await page.evaluate(()=>groups[0].aItems.length),3);
+ const prose=await download(page,'#exportTei');
+ assert.match(prose,/<body><p>prima riga poetica seconda riga poetica terza riga poetica<\/p><\/body>/);
+ await page.locator('#exportTei').click();await page.locator('#genre').selectOption('poetry');
+ const poetry=await download(page,'#confirmTeiExport');
+ const verses=await page.evaluate(xml=>[...new DOMParser().parseFromString(xml,'application/xml').getElementsByTagName('l')].map(el=>el.textContent),poetry);
+ assert.deepEqual(verses,lines);
+ const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ assert.equal(await download(page,'#exportTei'),poetry);assert.deepEqual(errors,[]);await page.close();
+});

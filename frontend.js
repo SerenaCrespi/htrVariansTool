@@ -45,6 +45,10 @@ Object.assign(messages.en,{"exportSetup": "Export TEI", "exportSetupHint": "Choo
 Object.assign(messages.fr,{"exportSetup": "Exporter en TEI", "exportSetupHint": "Choisissez un genre pour tout le texte ou définissez des intervalles de prose, poésie et théâtre.", "wholeTextGenre": "Un seul genre pour tout le texte", "intervalGenres": "Genres différents par intervalle", "downloadTei": "Télécharger le TEI"});
 Object.assign(messages.it,{"exportSetup": "Esporta TEI", "exportSetupHint": "Scegli un genere per tutto il testo oppure definisci intervalli di prosa, poesia e teatro.", "wholeTextGenre": "Un solo genere per tutto il testo", "intervalGenres": "Generi diversi per intervallo", "downloadTei": "Scarica TEI"});
 
+Object.assign(messages.en,{"rangesHint": "Assign prose, poetry or drama to intervals of the numbered reference comparison units. Prose units are joined in one paragraph per interval; poetry preserves the original ALTO lines of the reference witness. Cover all units once, in order.", "poetrySourceMapping": "The reviewed reference text cannot be mapped unambiguously to its original ALTO lines. Check the reference corrections before exporting poetry.", "poetryLineBoundary": "This poetry interval cuts through an original ALTO line. Include all units containing that source line in the same poetry interval."});
+Object.assign(messages.fr,{"rangesHint": "Attribuez prose, poésie ou théâtre aux intervalles numérotés. Les unités de prose sont réunies en un paragraphe par intervalle ; la poésie conserve les lignes ALTO originales du témoin de référence. Couvrez toutes les unités une seule fois et dans l’ordre.", "poetrySourceMapping": "Le texte de référence révisé ne peut pas être relié sans ambiguïté aux lignes ALTO originales. Vérifiez les corrections avant l’export poétique.", "poetryLineBoundary": "Cet intervalle poétique coupe une ligne ALTO originale. Incluez toutes les unités de cette ligne dans le même intervalle poétique."});
+Object.assign(messages.it,{"rangesHint": "Assegna prosa, poesia o teatro agli intervalli delle unità numerate. La prosa viene unita in un paragrafo per intervallo; la poesia conserva le righe ALTO originali del testimone di riferimento. Copri tutte le unità una sola volta e in ordine.", "poetrySourceMapping": "Il testo di riferimento revisionato non può essere ricondotto senza ambiguità alle righe ALTO originali. Verifica le correzioni prima di esportare la poesia.", "poetryLineBoundary": "Questo intervallo poetico taglia una riga ALTO originale. Includi tutte le unità di quella riga nello stesso intervallo poetico."});
+
 let imageStatus={A:null},alignmentMethod='',alignmentDraft=null;
 
 messages.en.importHint='Select the dossier folder containing a witness’s ALTO files. The dossier name is used automatically; page and line references are extracted locally.';messages.fr.importHint='Sélectionnez le dossier contenant les fichiers ALTO du témoin. Son nom est repris automatiquement ; les références de page et de ligne sont extraites localement.';messages.it.importHint='Seleziona la cartella dossier con i file ALTO del testimone. Il nome viene ripreso automaticamente; i riferimenti di pagina e riga sono estratti localmente.';
@@ -200,11 +204,11 @@ function currentReview(id){return id===activeWitness?{decisions,movementDecision
 function selectedVariantEdits(id){const pair=pairResults[id];if(!pair)return[];const state=currentReview(id).decisions||{},out=[];let offset=0;for(let gi=0;gi<pair.alignments.length;gi++){const g=pair.alignments[gi],left=groupText(pair.A,g,'A'),right=groupText(pair.B,g,'B'),d=compareUnit(left,right),selected=new Set(Object.entries(state[gi]||{}).filter(([,v])=>v==='keep').map(([k])=>Number(k)));for(const k of selected){const aPos=[];d.aa.forEach((x,pos)=>{if(x.c==='var'&&x.v===k)aPos.push(pos)});const bTokens=d.bb.filter(x=>x.c==='var'&&x.v===k).map(x=>x.t);let start=aPos.length?aPos[0]:d.aa.findIndex(x=>x.c==='var'&&x.v>k);if(start<0)start=d.aa.length;const end=aPos.length?aPos[aPos.length-1]+1:start;out.push({id,a0:offset+start,a1:offset+end,tokens:bTokens,group:gi,variant:k})}offset+=left.split(/\s+/).filter(Boolean).length}return out}
 function exportReferenceUnits(){
  const pair=pairResults[Object.keys(pairResults)[0]];
- return pair?pair.alignments.map(g=>({text:groupText(pair.A,g,'A'),refs:groupItems(pair.A,g,'A').flatMap(item=>item.refs||[])})):[];
+ return pair?pair.alignments.map(g=>({text:groupText(pair.A,g,'A'),items:groupItems(pair.A,g,'A'),refs:groupItems(pair.A,g,'A').flatMap(item=>item.refs||[])})):[];
 }
 function exportIdentifiers(){return VariansExport.witnessIdentifiers(['A',...Object.keys(pairResults)],names)}
 function effectiveGenreRanges(total,ranges=genreRanges,genre=uniformGenre){return ranges.length?ranges:[{start:1,end:total,genre}]}
-function exportError(error){return t(['rangeCoverage','variantCrossesBoundary'].includes(error.message)?error.message:'error')+(['rangeCoverage','variantCrossesBoundary'].includes(error.message)?'':error.message)}
+function exportError(error){return t(['rangeCoverage','variantCrossesBoundary','poetrySourceMapping','poetryLineBoundary'].includes(error.message)?error.message:'error')+(['rangeCoverage','variantCrossesBoundary','poetrySourceMapping','poetryLineBoundary'].includes(error.message)?'':error.message)}
 function renderGenreEditor(){
  if(!teiExportDraft)return;
  const draft=teiExportDraft;
@@ -232,7 +236,7 @@ function buildTEI(ranges=genreRanges,genre=uniformGenre){
  const ids=Object.keys(pairResults);if(!ids.length)throw Error(t('noAlignment'));
  const referenceUnits=exportReferenceUnits(),idMap=exportIdentifiers();
  const edits=ids.flatMap(selectedVariantEdits).map(e=>e.id===ids[0]?{...e,referenceUnit:e.group}:e);
- const body=VariansExport.renderGenreRanges(referenceUnits,effectiveGenreRanges(referenceUnits.length,ranges,genre),(start,end)=>VariansExport.renderApparatus(referenceUnits,edits,ids,idMap,start,end));
+ const body=VariansExport.renderGenreRanges(referenceUnits,effectiveGenreRanges(referenceUnits.length,ranges,genre),(start,end)=>VariansExport.renderApparatus(referenceUnits,edits,ids,idMap,start,end),(start,end)=>VariansExport.renderALTOPoetry(referenceUnits,pairResults[ids[0]].A,edits,ids,idMap,start,end));
  const witnesses=['A',...ids].map(id=>`<witness xml:id="${esc(idMap[id])}">${esc(names[id])}</witness>`).join('');
  return `<?xml version="1.0" encoding="UTF-8"?>\n<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader><fileDesc><titleStmt><title>${esc(t('teiTitle'))}</title></titleStmt><publicationStmt><p>${esc(t('teiExport'))}</p></publicationStmt><sourceDesc><listWit>${witnesses}</listWit></sourceDesc></fileDesc></teiHeader><text><body>${body}</body></text></TEI>`;
 }

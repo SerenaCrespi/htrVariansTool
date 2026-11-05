@@ -29,9 +29,10 @@
   if(next!==total+1)throw Error('rangeCoverage');
   return ranges;
  }
- function renderGenreRanges(referenceUnits,ranges,renderContent){
+ function renderGenreRanges(referenceUnits,ranges,renderContent,renderPoetry=null){
   validateGenreRanges(ranges,referenceUnits.length);
   return ranges.map(({start,end,genre})=>{
+   if(genre==='poetry'&&renderPoetry)return `<lg type="poem">${renderPoetry(start-1,end)}</lg>`;
    if(genre==='poetry')return `<lg type="poem">${Array.from({length:end-start+1},(_,i)=>`<l>${renderContent(start+i-1,start+i)}</l>`).join('\n')}</lg>`;
    const content=`<p>${renderContent(start-1,end)}</p>`;
    return genre==='drama'?`<sp>${content}</sp>`:content;
@@ -78,5 +79,84 @@
   }
   out.push(slice.slice(cursor).map(escapeXML).join(' '));return out.filter(Boolean).join(' ');
  }
- return {witnessIdentifiers,validateGenreRanges,renderGenreRanges,unitWordOffsets,renderApparatus};
+ const sourceLineKey=ref=>ref?.line?JSON.stringify([ref.alto_file||'',ref.page||'',ref.line]):null;
+ function altoPoetryLayout(referenceUnits,sourceUnits,startUnit=0,endUnit=referenceUnits.length){
+  const source=new Map();
+  for(const unit of sourceUnits)for(const ref of unit.refs||[])if(sourceLineKey(ref))source.set(sourceLineKey(ref),{text:unit.text,ref});
+  const segments=[],byKey=new Map(),originalWords=[],sourceOwners=new Map();
+  const add=(key,text,wordIndex,reviewUnit)=>{
+   if(!byKey.has(key)){byKey.set(key,segments.length);segments.push({text:'',parts:[],reviewUnits:new Set(),sourceKey:key})}
+   const segment=segments[byKey.get(key)];segment.parts.push({text,wordIndex});segment.reviewUnits.add(reviewUnit);
+  };
+  for(let ui=0;ui<referenceUnits.length;ui++){
+   const unit=referenceUnits[ui],items=unit.items||[unit];
+   for(const item of items){
+    const refs=[...new Map((item.refs||[]).filter(r=>sourceLineKey(r)).map(r=>[sourceLineKey(r),r])).values()];
+    for(const ref of refs){const key=sourceLineKey(ref);if(!sourceOwners.has(key))sourceOwners.set(key,new Set());sourceOwners.get(key).add(ui)}
+    const tokens=words(item.text),base=originalWords.length;originalWords.push(...tokens);
+    if(!tokens.length)continue;
+    if(ui<startUnit||ui>=endUnit){tokens.forEach((token,i)=>add(`outside:${ui}`,token,base+i,ui));continue}
+    if(refs.length<=1){
+     if(!refs.length&&source.size)throw Error('poetrySourceMapping');
+     const key=refs.length?sourceLineKey(refs[0]):`manual:${ui}`;
+     tokens.forEach((token,i)=>add(key,token,base+i,ui));continue;
+    }
+    // A logical token can cross two physical ALTO lines (e.g. "splen-" /
+    // "dente"). Locate its characters in the original source lines, then
+    // project each piece back without inventing a new line boundary.
+    const spans=[];let joined='';
+    for(const ref of refs){
+     const text=source.get(sourceLineKey(ref))?.text;
+     if(text===undefined)throw Error('poetrySourceMapping');
+     const compact=text.replace(/\s+/g,'');spans.push({key:sourceLineKey(ref),start:joined.length,end:joined.length+compact.length});joined+=compact;
+    }
+    const needle=tokens.join(''),at=joined.indexOf(needle);
+    if(at<0||joined.indexOf(needle,at+1)>=0)throw Error('poetrySourceMapping');
+    let cursor=at;
+    for(let ti=0;ti<tokens.length;ti++){
+     const token=tokens[ti],end=cursor+token.length;
+     for(const span of spans){const a=Math.max(cursor,span.start),b=Math.min(end,span.end);if(a<b)add(span.key,token.slice(a-cursor,b-cursor),base+ti,ui)}
+     cursor=end;
+    }
+   }
+  }
+  const wordMap=Array.from({length:originalWords.length},()=>[]);let offset=0;
+  for(const segment of segments){
+   segment.text=segment.parts.map(p=>p.text).join(' ');
+   for(const part of segment.parts)wordMap[part.wordIndex].push(offset++);
+  }
+  return {units:segments,wordMap,sourceOwners,reviewOffsets:unitWordOffsets(referenceUnits)};
+ }
+ function renderALTOPoetry(referenceUnits,sourceUnits,edits,ids,idMap,startUnit,endUnit){
+  const layout=altoPoetryLayout(referenceUnits,sourceUnits,startUnit,endUnit),selected=[];
+  layout.units.forEach((line,i)=>{
+   const owners=[...line.reviewUnits];
+   if(owners.some(owner=>owner>=startUnit&&owner<endUnit)){
+    if([...(layout.sourceOwners.get(line.sourceKey)||line.reviewUnits)].some(owner=>owner<startUnit||owner>=endUnit))throw Error('poetryLineBoundary');
+    selected.push(i);
+   }
+  });
+  if(!selected.length)throw Error('poetrySourceMapping');
+  const offsets=unitWordOffsets(layout.units);
+  const projected=edits.flatMap(e=>{
+   if(e.a0===e.a1){
+    let owner=e.referenceUnit;
+    if(owner===undefined){owner=referenceUnits.findIndex((_,i)=>layout.reviewOffsets[i]<=e.a0&&layout.reviewOffsets[i+1]>e.a0);if(owner<0)owner=referenceUnits.length-1}
+    if(owner<startUnit||owner>=endUnit)return[];
+    let position=layout.wordMap[e.a0]?.[0]??offsets.at(-1);
+    const ownerLines=selected.filter(i=>layout.units[i].reviewUnits.has(owner));
+    let line=ownerLines.find(i=>offsets[i]<=position&&offsets[i+1]>position)??ownerLines.find(i=>offsets[i]<=position&&offsets[i+1]>=position)??selected.find(i=>offsets[i]<=position&&offsets[i+1]>position);
+    if(line===undefined){line=position<=offsets[selected[0]]?selected[0]:selected.at(-1);position=Math.max(offsets[line],Math.min(position,offsets[line+1]))}
+    return[{...e,a0:position,a1:position,referenceUnit:line}];
+   }
+   const positions=layout.wordMap.slice(e.a0,e.a1).flat();
+   if(!positions.length)throw Error('poetrySourceMapping');
+   const sorted=[...positions].sort((a,b)=>a-b);
+   if(sorted.some((p,i)=>i&&p!==sorted[i-1]+1))throw Error('poetrySourceMapping');
+   return[{...e,a0:sorted[0],a1:sorted.at(-1)+1}];
+  });
+  return selected.map(i=>`<l>${renderApparatus(layout.units,projected,ids,idMap,i,i+1)}</l>`).join('\n');
+ }
+
+ return {altoPoetryLayout,renderALTOPoetry,witnessIdentifiers,validateGenreRanges,renderGenreRanges,unitWordOffsets,renderApparatus};
 });

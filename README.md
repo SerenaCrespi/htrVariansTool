@@ -82,9 +82,14 @@ Numbering follows the reference units in the **first witness comparison**, named
 in the dialog. Expand **Reference unit numbering and source lines** to see the
 numbered readings and their ALTO references, especially when viewing a different
 comparison. A unit is a review row, which may contain multiple physical lines.
-Each poetry unit exports as one `<l>` inside `<lg>`; check and adjust grouping to
-match verse boundaries. Each prose interval exports as one `<p>`. This does not
-automatically infer paragraphs, verse boundaries or stanzas. A retained variant
+Each prose interval exports as one `<p>`, joining its review units. Poetry uses
+one `<l>` per original ALTO line of the reference witness inside `<lg>`, even
+when review units group several source lines or split one source line into
+multiple fragments. Logical continued words are projected back onto their
+physical source lines. Line identity includes ALTO file, page and line ID.
+Intervals must not cut a physical ALTO line in half. Ambiguous multiline
+reference corrections are reported instead of inventing verse boundaries. This
+does not automatically infer paragraphs or stanzas. A retained variant
 that crosses a verse/structure boundary is reported rather than silently omitted;
 adjust the alignment or interval boundaries before exporting.
 
