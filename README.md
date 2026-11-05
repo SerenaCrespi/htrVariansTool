@@ -86,6 +86,52 @@ changing either reading keeps all decisions and source groupings intact.
 Recalculating the complete alignment can clear review decisions, so save the
 project before doing that.
 
+## Optional semantic alignment with Bertalign
+
+On the `feature/project-save-open` branch, **Suggest semantic alignment** can
+propose an alternative for a difficult passage without rerunning the whole
+comparison. The normal ALTO workflow remains lexical and does not require a
+semantic model.
+
+1. Select the witness comparison and click **Suggest semantic alignment**.
+2. Choose a contiguous interval of **1–40 review units** containing text from
+   both witnesses. Include surrounding context; do not rely on an isolated short
+   manuscript line for a semantic judgment.
+3. Click **Generate proposal**. The interface distinguishes a missing package,
+   missing/incompatible dependencies, a model-loading failure, an alignment
+   failure, and an actual proposal.
+4. Compare **Current alignment** and **Bertalign proposal** in the preview.
+   **Cancel** or Esc leaves the review unchanged. Identical proposals do not
+   enable the apply button.
+5. Click **Apply proposal** to replace only the selected interval. Existing
+   decisions in that interval require confirmation before resetting; decisions
+   before and after it are preserved, including when row numbers change. Other
+   witness comparisons are unchanged.
+
+Bertalign 2.0.1 requires Python 3.12+ and the dependencies in `requirements.txt`.
+The Linux launcher installs them into `.venv`. If installed manually, use the
+same Python environment that starts the server. The first proposal loads the
+public **LaBSE** model and may download its weights from Hugging Face; sufficient
+memory and network access to the model host are required. Later proposals reuse
+the loaded encoder. Checking availability alone does not load the model.
+
+The backend groups source fragments into short contextual passages, validates
+Bertalign’s ordered index coverage, and refines each proposed passage using
+word-level lexical alignment. ALTO references and source text are retained.
+Missing models and invalid output do not silently become a lexical “semantic
+proposal.” The interface labels the ordinary lexical method and a reviewed
+hybrid method separately.
+
+When changing the first comparison, the selected interval must fit inside one
+saved TEI genre interval; its endpoints and following interval numbers are
+adjusted to the new row count. Applied proposal metadata is retained in project
+files. Save the project after applying. Closing a running request discards its
+preview; server-side model work may finish in the background.
+
+The model’s quality on historical spelling and literary rewritings requires
+assessment against researcher-reviewed examples. Unit tests use a controlled
+aligner/encoder and verify mechanics, not LaBSE’s scholarly accuracy.
+
 ## Save, reopen and export
 
 | Action | File | Purpose |
@@ -193,7 +239,8 @@ internal comparison keys; those differ from public result-export identifiers.
   intervening spans.
 - Results retain their ALTO source references for review and export.
 - Bertalign is not required for the main ALTO alignment. It can be attempted by
-  the backup/legacy alignment path. Displaced-passage suggestions are separate
+  the backup/legacy alignment path and is explicitly available for selected
+  passage proposals on the feature branch. Displaced-passage suggestions are separate
   review aids.
 
 All alignments are proposals for scholarly review, not automatic editorial
@@ -214,12 +261,14 @@ python3 -B -m unittest discover -s tests -v
 Requires Node.js 20 or newer; no browser dependencies are needed:
 
 ```bash
-node --test tests/test_export_support.cjs
+node --test tests/test_export_support.cjs tests/test_review_support.cjs
 ```
 
 Coverage includes name-based witness IDs, collisions, complete text preservation,
 mixed genres, ALTO line reconstruction, continued words, apparatus placement,
-and invalid intervals or ambiguous boundaries.
+invalid intervals or ambiguous boundaries, and preserving reviews when applying
+a semantic proposal. Backend semantic tests cover source mappings, error states,
+refinement failures and encoder reuse with a controlled Bertalign substitute.
 
 ### Browser regression tests
 
@@ -248,14 +297,18 @@ and ALTO verse boundaries after manual regrouping.
 | File | Role |
 |---|---|
 | `backend/app.py` | Local HTTP server, ALTO parsing and alignment |
+| `backend/semantic_alignment.py` | Optional Bertalign runtime and validated passage proposals |
 | `backend/alto_support.py` | ALTO tag and XML helpers |
 | `backend/relocations.py` | Displaced-passage suggestions |
 | `frontend.js` | Witness loading, review state, project sessions and export dialog |
+| `review-support.js` | Pure interval replacement and review-preservation rules |
 | `export-support.js` | Witness IDs, TEI structures, ALTO line reconstruction and apparatus rendering |
 | `index.html` | Application interface and styles |
 | `LANCER_LINUX.sh`, `start.sh` | Linux launcher and dependency setup |
 | `requirements.txt` | Optional Bertalign dependency |
 | `tests/test_alignment_features.py` | Backend regression tests |
+| `tests/test_semantic_alignment.py` | Semantic proposal control-flow and source-mapping unit tests |
+| `tests/test_review_support.cjs` | Review preservation and TEI range adjustment unit tests |
 | `tests/test_export_support.cjs` | Export unit tests |
 | `tests/test_project_sessions.cjs` | Browser regression tests |
 

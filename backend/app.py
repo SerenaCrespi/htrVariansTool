@@ -2,11 +2,10 @@
 """Local ALTO collation backend with optional Bertalign and lexical DP.
 
 Processing overview:
-1. Parse ALTO XML into ordered text-line units while preserving source pointers.
-2. Normalize words and calculate lexical similarity scores.
-3. Align two witnesses with Bertalign anchors when available, then refine them
-   with weighted dynamic programming (or use the lexical fallback directly).
-4. Recheck nearby line boundaries and return groups to the local HTTP frontend.
+1. Parse ALTO XML while preserving source pointers.
+2. Align the continuous word streams and project results onto review rows.
+3. Provide independent displaced-passage suggestions.
+4. On explicit request, propose Bertalign passage anchors refined lexically.
 """
 from __future__ import annotations
 
@@ -22,6 +21,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 import xml.etree.ElementTree as ET
+
+import semantic_alignment
 
 from alto_support import ancestors, resolve_tagrefs, tag_definitions
 from relocations import find_displaced_passages, summarize_ambiguities
@@ -904,6 +905,9 @@ class Handler(SimpleHTTPRequestHandler):
         print("[local] " + fmt % args)
 
     def do_GET(self):
+        if urlparse(self.path).path == '/api/semantic-status':
+            self._json(200, semantic_alignment.runtime_status())
+            return
         # Restrict local static serving to the UI, bundled samples and assets.
         path = unquote(urlparse(self.path).path)
         if path == "/":
@@ -923,7 +927,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(404)
                 return
             self.path = path
-        elif path in {"/frontend.js", "/export-support.js"}:
+        elif path in {"/frontend.js", "/export-support.js", "/review-support.js"}:
             self.path = path
         elif path.startswith("/assets/"):
             name = Path(path).name
@@ -936,10 +940,19 @@ class Handler(SimpleHTTPRequestHandler):
             return
         return super().do_GET()
 
+    def _json(self, code, result):
+        body = json.dumps(result, ensure_ascii=False).encode('utf-8')
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
         # The browser sends ALTO bundles (or pre-segmented sentences) here.
         # The server parses, aligns and returns source units plus review data.
-        if urlparse(self.path).path != "/api/align":
+        if urlparse(self.path).path not in {"/api/align", "/api/semantic-proposal"}:
             self.send_error(404)
             return
         try:
@@ -947,6 +960,11 @@ class Handler(SimpleHTTPRequestHandler):
             if length <= 0 or length > MAX_BODY:
                 raise ValueError("Invalid request size (maximum 50 MB).")
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError('Expected a JSON object.')
+            if urlparse(self.path).path == '/api/semantic-proposal':
+                self._json(200, semantic_alignment.propose(payload.get('rows'), align_alto_words))
+                return
             taxonomy = payload.get("taxonomy") if isinstance(payload.get("taxonomy"), dict) else None
             if "alto" in payload:
                 alto = payload["alto"]

@@ -261,3 +261,48 @@ test('unchanged, cancelled and invalid text edits preserve decisions and origina
  assert.match(await page.locator('#editError').textContent(),/At least one/);assert.deepEqual(await page.evaluate(()=>captureProject()),before);
  await page.close();
 });
+
+test('semantic proposals are previewed before applying and preserve decisions outside the selected interval',async()=>{
+ const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
+ await upload(page,'#fileA',['alfa prima lezione','beta seconda lezione','gamma terza lezione','delta quarta lezione']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['alfa prima variante','beta seconda variante','gamma terza variante','delta quarta variante']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ await page.evaluate(()=>groups.forEach((_,i)=>setAll(i,i%2?'ignore':'keep')));
+ const before=await page.evaluate(()=>captureProject());
+ await page.route('**/api/semantic-status',route=>route.fulfill({json:{engine:'bertalign',status:'available_not_loaded'}}));
+ // This controlled proposal tests UI/state transitions, not model quality.
+ await page.route('**/api/semantic-proposal',async route=>{
+  const {rows}=route.request().postDataJSON();
+  await route.fulfill({json:{engine:'bertalign',status:'proposal_ready',model:'test-encoder',method:'Bertalign passage anchors + word-level Levenshtein',alignments:[{id:0,a0:0,a1:2,b0:0,b1:2,similarity:0.8,aItems:rows.flatMap(r=>r.aItems),bItems:rows.flatMap(r=>r.bItems)}]}});
+ });
+ await page.locator('#semanticBtn').click();await page.locator('#semanticStart').fill('2');await page.locator('#semanticEnd').fill('3');await page.locator('#requestSemantic').click();
+ await page.waitForFunction(()=>!document.getElementById('applySemantic').disabled);
+ assert.equal(await page.locator('#semanticPreview .semantic-unit').count(),3);
+ assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ await page.locator('#cancelSemantic').click();assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ await page.locator('#semanticBtn').click();await page.locator('#semanticStart').fill('2');await page.locator('#semanticEnd').fill('3');await page.locator('#requestSemantic').click();
+ await page.waitForFunction(()=>!document.getElementById('applySemantic').disabled);
+ page.once('dialog',dialog=>dialog.accept());await page.locator('#applySemantic').click();
+ assert.equal(await page.locator('#semanticDialog').isVisible(),false);
+ const after=await page.evaluate(()=>captureProject());
+ assert.equal(after.state.pairResults.B.alignments.length,3);
+ assert.deepEqual(after.state.pairReviews.B.decisions,{0:before.state.pairReviews.B.decisions[0],2:before.state.pairReviews.B.decisions[3]});
+ assert.match(await page.locator('#loadedStatus').textContent(),/reviewer-applied Bertalign/);
+ assert.equal(after.state.pairResults.B.semantic_history[0].engine,'bertalign');assert.equal(after.state.pairResults.B.semantic_history[0].resultUnits,1);
+ const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);assert.deepEqual(await page.evaluate(()=>captureProject()),after);
+ assert.deepEqual(errors,[]);await page.close();
+});
+
+test('semantic service reports unavailable models without changing reviews and validates requests',async()=>{
+ const page=await browser.newPage();await page.goto(url);
+ const status=await page.request.get(url+'/api/semantic-status');assert.equal(status.status(),200);assert.equal((await status.json()).engine,'bertalign');
+ const invalid=await page.request.post(url+'/api/semantic-proposal',{data:{rows:[]}});assert.equal(invalid.status(),400);assert.match((await invalid.json()).error,/Select between/);
+ await upload(page,'#fileA',['prima lezione','seconda lezione']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['prima variante','seconda variante']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ await page.evaluate(()=>setAll(0,'keep'));const before=await page.evaluate(()=>captureProject());
+ await page.route('**/api/semantic-status',route=>route.fulfill({json:{engine:'bertalign',status:'not_installed'}}));
+ await page.route('**/api/semantic-proposal',route=>route.fulfill({json:{engine:'bertalign',status:'model_unavailable'}}));
+ await page.locator('#semanticBtn').click();await page.waitForFunction(()=>document.getElementById('semanticStatus').textContent.includes('not installed'));
+ await page.locator('#requestSemantic').click();await page.waitForFunction(()=>document.getElementById('semanticStatus').textContent.includes('could not load'));
+ assert.equal(await page.locator('#applySemantic').isDisabled(),true);assert.deepEqual(await page.evaluate(()=>captureProject()),before);
+ await page.keyboard.press('Escape');assert.deepEqual(await page.evaluate(()=>captureProject()),before);await page.close();
+});

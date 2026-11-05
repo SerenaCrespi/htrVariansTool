@@ -11,7 +11,38 @@ Il testo nei file ALTO non viene riscritto. La forma di una parola ricomposta pe
 
 ## Bertalign
 
-Bertalign non è attualmente chiamato nel percorso ALTO parola per parola. Il vecchio percorso, usato per unità testuali inserite o modificate manualmente, può ancora tentare Bertalign e poi usare il DP lessicale. Nei campioni analizzati, l’inizializzazione di Bertalign non è riuscita a causa della configurazione proxy (`socksio`) e del caricamento del modello LaBSE. L’integrazione come generatore di ancore su segmenti ampi resta un passaggio futuro: ogni ancora dovrà essere verificata dall’allineamento lessicale e mappata ai token originali.
+Il percorso ALTO ordinario resta lessicale. Bertalign può essere tentato dal
+backup quando il confronto globale non produce alcuna corrispondenza; una sola
+corrispondenza non garantisce però la qualità dell’intero confronto.
+
+Sul branch `feature/project-save-open` il pulsante **Proponi allineamento
+semantico** attiva un percorso esplicito e indipendente:
+
+- `GET /api/semantic-status` controlla la disponibilità senza caricare il modello.
+- `POST /api/semantic-proposal` riceve fino a 40 righe di revisione con `aItems` e
+  `bItems`; il passaggio deve contenere testo in entrambi i testimoni.
+- `semantic_alignment.py` raggruppa i frammenti in passaggi contestuali (fino a
+  due frammenti, oppure arresto alla soglia di 30 parole). Bertalign lavora sui
+  passaggi con `is_split=True` e restituisce indici: devono coprire entrambi i
+  lati esattamente, in ordine e senza duplicazioni.
+- Ogni corrispondenza viene rifinita con `align_alto_words()`, mantenendo i
+  riferimenti ALTO e verificando la conservazione del testo. Gli errori non
+  producono un fallback lessicale presentato come proposta semantica.
+- Il revisore confronta l’anteprima con il risultato corrente e decide se
+  applicarla. Si azzerano solo le decisioni nell’intervallo sostituito; quelle
+  esterne vengono ricollocate se cambia il numero delle righe.
+
+Il modello LaBSE è caricato su richiesta e riutilizzato tramite `get_encoder()`
+di Bertalign 2.0.1. Un lock serializza caricamento e inferenze. Sono distinti gli
+stati di pacchetto assente, dipendenza incompatibile, modello non disponibile,
+errore di allineamento, indici non validi, assenza di corrispondenze ed errore di
+rifinitura. Dopo un errore si può riprovare. Il primo caricamento può richiedere
+accesso a Hugging Face e memoria considerevole.
+
+I test unitari usano un encoder e un allineatore controllati: verificano il flusso,
+i riferimenti fonte e la conservazione delle decisioni. Non dimostrano che LaBSE
+migliori gli allineamenti sui manoscritti PRIMA: questa valutazione richiede
+esempi reali annotati dal ricercatore.
 
 ## Altri componenti
 
@@ -25,4 +56,4 @@ Bertalign non è attualmente chiamato nel percorso ALTO parola per parola. Il ve
 - Le sequenze non corrispondenti che superano il limite computazionale vengono lasciate come omissioni e aggiunte, invece di essere forzate in sostituzioni.
 - La ricostruzione della vista usa le righe del testimone di riferimento come unità di revisione. Per il secondo testimone visualizza frammenti testuali ricondotti alla riga corrispondente e mantiene i riferimenti alle righe fisiche originali.
 - Le proposte di trasposizione non sono ancora state riprogettate per la nuova struttura parola per parola.
-- Bertalign non è incluso nel percorso ALTO attuale. Un’eventuale integrazione dovrà essere valutata sui dati PRIMA e non dovrà sostituire il matching lessicale dei token.
+- Le proposte semantiche sono esplicite e consultive: vanno valutate sui dati PRIMA e non sostituiscono il confronto lessicale dei token.
