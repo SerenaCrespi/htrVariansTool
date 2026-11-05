@@ -1,0 +1,26 @@
+{
+  "type": "real_bertalign_runtime_attempt",
+  "model_inference": false,
+  "bertalign_version": "2.0.1",
+  "torch_version": "2.15.0+cpu",
+  "elapsed_seconds": 8.874,
+  "window": {
+    "fromUnit": 1,
+    "toUnit": 19
+  },
+  "result": {
+    "engine": "bertalign",
+    "model": "LaBSE",
+    "status": "model_unavailable",
+    "input_units": 19,
+    "semantic_blocks": {
+      "A": 11,
+      "B": 1
+    }
+  },
+  "network_probe": {
+    "host": "huggingface.co",
+    "http_status": 403,
+    "model_cached": false
+  }
+}

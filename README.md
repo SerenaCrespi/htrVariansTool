@@ -316,6 +316,13 @@ backend and cover multi-witness saving/reopening, unchanged JSON/TEI exports,
 image reconnection, invalid project rejection, the TEI dialog, mixed structures,
 and ALTO verse boundaries after manual regrouping.
 
+## Visible test report
+
+See the [5 November 2026 test report](reports/bertalign-2026-11-05/README.md)
+for actual ALTO sample output, the blocked real-model loading attempt, and a
+clearly labeled controlled demonstration of the recovery gate. The report also
+provides a script to produce a real before/after HTML report on your machine.
+
 ## Code map
 
 | File | Role |

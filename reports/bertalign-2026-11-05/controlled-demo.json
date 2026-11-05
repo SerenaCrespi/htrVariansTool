@@ -1,0 +1,267 @@
+{
+  "type": "controlled_simulation_not_labse",
+  "model_inference": false,
+  "description": "Both the initial lexical gaps and the semantic proposal are controlled test fixtures. The recovery quality gate is the real application code.",
+  "before": [
+    {
+      "id": 0,
+      "a0": 0,
+      "a1": 1,
+      "b0": 0,
+      "b1": 1,
+      "aItems": [
+        {
+          "text": "Il racconto comincia presso le mura della città.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "A0"
+            }
+          ]
+        }
+      ],
+      "bItems": [
+        {
+          "text": "Il racconto comincia presso le mura della città.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "B0"
+            }
+          ]
+        }
+      ],
+      "similarity": 1.0
+    },
+    {
+      "id": 1,
+      "a0": 1,
+      "a1": 2,
+      "b0": 1,
+      "b1": 1,
+      "aItems": [
+        {
+          "text": "Il viandante ritrova finalmente la strada verso casa.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "A1"
+            }
+          ]
+        }
+      ],
+      "bItems": [],
+      "similarity": 0.0
+    },
+    {
+      "id": 2,
+      "a0": 2,
+      "a1": 2,
+      "b0": 2,
+      "b1": 3,
+      "aItems": [],
+      "bItems": [
+        {
+          "text": "Il viandante ritrova finalmente la strada verso casa.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "B2"
+            }
+          ]
+        }
+      ],
+      "similarity": 0.0
+    },
+    {
+      "id": 3,
+      "a0": 3,
+      "a1": 4,
+      "b0": 3,
+      "b1": 4,
+      "aItems": [
+        {
+          "text": "Il capitolo termina con il ritorno del protagonista.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "A3"
+            }
+          ]
+        }
+      ],
+      "bItems": [
+        {
+          "text": "Il capitolo termina con il ritorno del protagonista.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "B3"
+            }
+          ]
+        }
+      ],
+      "similarity": 1.0
+    }
+  ],
+  "after": [
+    {
+      "id": 0,
+      "a0": 0,
+      "a1": 1,
+      "b0": 0,
+      "b1": 1,
+      "aItems": [
+        {
+          "text": "Il racconto comincia presso le mura della città.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "A0"
+            }
+          ]
+        }
+      ],
+      "bItems": [
+        {
+          "text": "Il racconto comincia presso le mura della città.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "B0"
+            }
+          ]
+        }
+      ],
+      "similarity": 1.0,
+      "alignment_source": "bertalign_automatic",
+      "semantic_review": true
+    },
+    {
+      "id": 1,
+      "a0": 1,
+      "a1": 2,
+      "b0": 1,
+      "b1": 1,
+      "aItems": [
+        {
+          "text": "Il viandante ritrova finalmente la strada verso casa.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "A1"
+            }
+          ]
+        }
+      ],
+      "bItems": [
+        {
+          "text": "Il viandante ritrova finalmente la strada verso casa.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "B2"
+            }
+          ]
+        }
+      ],
+      "similarity": 1.0,
+      "alignment_source": "bertalign_automatic",
+      "semantic_review": true
+    },
+    {
+      "id": 2,
+      "a0": 3,
+      "a1": 4,
+      "b0": 3,
+      "b1": 4,
+      "aItems": [
+        {
+          "text": "Il capitolo termina con il ritorno del protagonista.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "A3"
+            }
+          ]
+        }
+      ],
+      "bItems": [
+        {
+          "text": "Il capitolo termina con il ritorno del protagonista.",
+          "refs": [
+            {
+              "alto_file": "synthetic.xml",
+              "page": "p",
+              "line": "B3"
+            }
+          ]
+        }
+      ],
+      "similarity": 1.0,
+      "alignment_source": "bertalign_automatic",
+      "semantic_review": true
+    }
+  ],
+  "accepted": {
+    "strategy": "automatic",
+    "engine": "bertalign",
+    "status": "applied",
+    "candidates": 1,
+    "attempted": 1,
+    "accepted": 1,
+    "windows": [
+      {
+        "fromUnit": 1,
+        "toUnit": 4,
+        "status": "applied",
+        "beforeQuality": 0.66667,
+        "afterQuality": 1.0
+      }
+    ],
+    "policy": {
+      "weakThreshold": 0.45,
+      "anchorThreshold": 0.65,
+      "minWindowWords": 8,
+      "minGain": 0.04,
+      "maxWindowUnits": 40,
+      "maxAttempts": 3
+    }
+  },
+  "unchanged_proposal": {
+    "strategy": "automatic",
+    "engine": "bertalign",
+    "status": "kept_lexical",
+    "candidates": 1,
+    "attempted": 1,
+    "accepted": 0,
+    "windows": [
+      {
+        "fromUnit": 1,
+        "toUnit": 4,
+        "status": "no_improvement",
+        "beforeQuality": 0.66667,
+        "afterQuality": 0.66667
+      }
+    ],
+    "policy": {
+      "weakThreshold": 0.45,
+      "anchorThreshold": 0.65,
+      "minWindowWords": 8,
+      "minGain": 0.04,
+      "maxWindowUnits": 40,
+      "maxAttempts": 3
+    }
+  }
+}
