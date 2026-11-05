@@ -5,7 +5,7 @@ Processing overview:
 1. Parse ALTO XML while preserving source pointers.
 2. Align the continuous word streams and project results onto review rows.
 3. Provide independent displaced-passage suggestions.
-4. On explicit request, propose Bertalign passage anchors refined lexically.
+4. Automatically recover weak passages with validated Bertalign anchors when available.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 import xml.etree.ElementTree as ET
 
-import semantic_alignment
+import automatic_semantic
 
 from alto_support import ancestors, resolve_tagrefs, tag_definitions
 from relocations import find_displaced_passages, summarize_ambiguities
@@ -874,26 +874,28 @@ def _alignment_groups_as_rows(groups: list[dict], a: list[dict], b: list[dict]) 
     return rows
 
 
-def align_witness_inputs(a: list[dict], b: list[dict]) -> tuple[list[dict], str, list[dict]]:
-    """Use global word alignment first and Bertalign only if it yields no match."""
+def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False):
+    """Lexical first; automatically try semantic recovery on weak passages."""
     try:
         alignments = align_alto_words(a, b)
     except Exception as exc:
-        print(f"[align] Global word alignment failed; trying backup: {exc}")
+        print(f"[align] Global word alignment failed; using line-level backup: {exc}")
         alignments = []
-    has_matches = any(row.get("aItems") and row.get("bItems") for row in alignments)
-    if has_matches:
+    if alignments:
         alignment_method = "word-level Levenshtein with global displaced-run recovery"
     else:
-        # Bertalign's semantic segmentation is a backup only. Its output is
-        # converted to the same UI schema; the normal path remains global.
-        groups, backup_method = align(a, b, return_method=True)
+        # This backup is lexical. The same automatic quality gate below handles
+        # Bertalign; do not load it twice via the old all-or-nothing path.
+        groups = _align_dp(a, b)
         alignments = _alignment_groups_as_rows(groups, a, b)
-        alignment_method = f"backup: {backup_method}"
-    # Keep passage-movement suggestions independent from Bertalign as well.
+        alignment_method = "weighted Levenshtein backup"
+    alignments, diagnostics = automatic_semantic.recover(alignments, align_alto_words, similarity)
+    if diagnostics['accepted']:
+        alignment_method = "hybrid: automatic Bertalign recovery + word-level Levenshtein"
     line_groups = _align_dp(a, b)
     transpositions = find_displaced_passages(a, b, line_groups, similarity)
-    return alignments, alignment_method, transpositions
+    result = (alignments, alignment_method, transpositions)
+    return (*result, diagnostics) if include_diagnostics else result
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -905,9 +907,6 @@ class Handler(SimpleHTTPRequestHandler):
         print("[local] " + fmt % args)
 
     def do_GET(self):
-        if urlparse(self.path).path == '/api/semantic-status':
-            self._json(200, semantic_alignment.runtime_status())
-            return
         # Restrict local static serving to the UI, bundled samples and assets.
         path = unquote(urlparse(self.path).path)
         if path == "/":
@@ -927,7 +926,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(404)
                 return
             self.path = path
-        elif path in {"/frontend.js", "/export-support.js", "/review-support.js"}:
+        elif path in {"/frontend.js", "/export-support.js"}:
             self.path = path
         elif path.startswith("/assets/"):
             name = Path(path).name
@@ -952,7 +951,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         # The browser sends ALTO bundles (or pre-segmented sentences) here.
         # The server parses, aligns and returns source units plus review data.
-        if urlparse(self.path).path not in {"/api/align", "/api/semantic-proposal"}:
+        if urlparse(self.path).path != "/api/align":
             self.send_error(404)
             return
         try:
@@ -962,9 +961,6 @@ class Handler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError('Expected a JSON object.')
-            if urlparse(self.path).path == '/api/semantic-proposal':
-                self._json(200, semantic_alignment.propose(payload.get('rows'), align_alto_words))
-                return
             taxonomy = payload.get("taxonomy") if isinstance(payload.get("taxonomy"), dict) else None
             if "alto" in payload:
                 alto = payload["alto"]
@@ -978,30 +974,21 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("Each witness must contain at least one textual unit.")
             # Both uploaded ALTO and frontend-prepared sentence payloads use
             # the same continuous word-stream alignment.
-            alignments, alignment_method, transpositions = align_witness_inputs(a, b)
+            alignments, alignment_method, transpositions, diagnostics = align_witness_inputs(a, b, include_diagnostics=True)
             result = {
                 "witnesses": {"A": a, "B": b},
                 "alignments": alignments,
                 "alignment_method": alignment_method,
+                "semantic_fallback": diagnostics,
                 "possible_transpositions": transpositions,
                 "frequent_ambiguous_cases": summarize_ambiguities(transpositions),
                 "taxonomy_available": any(ref.get("line_tags") or ref.get("block_tags")
                     for witness in (a, b) for unit in witness for ref in unit.get("refs", [])),
             }
-            body = json.dumps(result, ensure_ascii=False).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+            self._json(200, result)
         except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            body = json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8")
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._json(400, {"error": str(exc)})
+
 
 
 def main():

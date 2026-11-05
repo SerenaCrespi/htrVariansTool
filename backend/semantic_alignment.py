@@ -1,4 +1,4 @@
-"""Optional, explicitly requested Bertalign proposals; no implicit lexical fallback."""
+"""Optional Bertalign passage proposals used by automatic lexical recovery."""
 from __future__ import annotations
 
 from collections import Counter

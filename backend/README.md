@@ -9,40 +9,52 @@
 
 Il testo nei file ALTO non viene riscritto. La forma di una parola ricomposta per il confronto resta collegata alle porzioni e alle righe fonte. I risultati sono proposte di allineamento da verificare sulle immagini, non decisioni editoriali automatiche.
 
-## Bertalign
+## Fallback automatico Bertalign
 
-Il percorso ALTO ordinario resta lessicale. Bertalign può essere tentato dal
-backup quando il confronto globale non produce alcuna corrispondenza; una sola
-corrispondenza non garantisce però la qualità dell’intero confronto.
+Sul branch `feature/project-save-open`, `align_witness_inputs()` produce prima
+l’allineamento lessicale e poi chiama `automatic_semantic.recover()`. Bertalign
+viene tentato sui passaggi incerti anche se il resto del confronto contiene
+corrispondenze riuscite. Non servono pulsanti, selezioni manuali o conferme per
+avviare il fallback. Il precedente percorso manuale è stato rimosso.
 
-Sul branch `feature/project-save-open` il pulsante **Proponi allineamento
-semantico** attiva un percorso esplicito e indipendente:
+`automatic_semantic.py` individua sequenze con somiglianza lessicale inferiore a
+0,45 o aggiunte/omissioni contrapposte. Richiede testo da entrambi i lati e almeno
+due righe deboli, oppure una riga debole di almeno 12 parole per lato. Aggiunge una
+riga di contesto prima e dopo; la finestra deve contenere almeno 8 parole per lato.
+Le finestre sovrapposte sono unite. Si tentano al massimo tre finestre, ciascuna
+non superiore a 40 unità, rispettando anche i limiti di frammenti e caratteri.
+Le parti eccedenti vengono segnalate e conservano il risultato lessicale.
 
-- `GET /api/semantic-status` controlla la disponibilità senza caricare il modello.
-- `POST /api/semantic-proposal` riceve fino a 40 righe di revisione con `aItems` e
-  `bItems`; il passaggio deve contenere testo in entrambi i testimoni.
-- `semantic_alignment.py` raggruppa i frammenti in passaggi contestuali (fino a
-  due frammenti, oppure arresto alla soglia di 30 parole). Bertalign lavora sui
-  passaggi con `is_split=True` e restituisce indici: devono coprire entrambi i
-  lati esattamente, in ordine e senza duplicazioni.
-- Ogni corrispondenza viene rifinita con `align_alto_words()`, mantenendo i
-  riferimenti ALTO e verificando la conservazione del testo. Gli errori non
-  producono un fallback lessicale presentato come proposta semantica.
-- Il revisore confronta l’anteprima con il risultato corrente e decide se
-  applicarla. Si azzerano solo le decisioni nell’intervallo sostituito; quelle
-  esterne vengono ricollocate se cambia il numero delle righe.
+`semantic_alignment.py` raggruppa i frammenti in passaggi contestuali e chiama
+Bertalign con `is_split=True`. Gli indici devono coprire entrambi i lati in ordine,
+senza lacune o duplicazioni. Ogni corrispondenza è rifinita da `align_alto_words()`.
+Il modello LaBSE si carica solo quando necessario e viene riutilizzato tramite
+`get_encoder()`. Un lock serializza caricamento e inferenze.
 
-Il modello LaBSE è caricato su richiesta e riutilizzato tramite `get_encoder()`
-di Bertalign 2.0.1. Un lock serializza caricamento e inferenze. Sono distinti gli
-stati di pacchetto assente, dipendenza incompatibile, modello non disponibile,
-errore di allineamento, indici non validi, assenza di corrispondenze ed errore di
-rifinitura. Dopo un errore si può riprovare. Il primo caricamento può richiedere
-accesso a Hugging Face e memoria considerevole.
+Il recupero è accettato soltanto se conserva testo e riferimenti fonte, mantiene
+le corrispondenze contestuali affidabili (somiglianza almeno 0,65) e migliora di
+almeno 0,04 la qualità lessicale aggregata. La qualità pesa la somiglianza per il
+numero di parole accoppiate e normalizza per la lunghezza del testimone maggiore.
+Non basta che Bertalign restituisca una corrispondenza o dichiari un buon punteggio.
+Le righe recuperate sono marcate `alignment_source=bertalign_automatic` e
+`semantic_review=true`, senza prendere decisioni editoriali.
 
-I test unitari usano un encoder e un allineatore controllati: verificano il flusso,
-i riferimenti fonte e la conservazione delle decisioni. Non dimostrano che LaBSE
-migliori gli allineamenti sui manoscritti PRIMA: questa valutazione richiede
-esempi reali annotati dal ricercatore.
+`POST /api/align` restituisce `semantic_fallback` con stato, numero di tentativi,
+finestre accettate/rifiutate, ragioni e soglie usate. I numeri delle finestre si
+riferiscono alle righe lessicali iniziali. Il frontend mostra lo stato e salva la
+diagnostica nel progetto e nell’export JSON. La funzione Python mantiene il
+ritorno a tre elementi; `include_diagnostics=True` aggiunge il quarto elemento.
+
+Pacchetto assente, dipendenze incompatibili, modello non disponibile, indici non
+validi o mancato miglioramento conservano l’allineamento lessicale. Un errore di
+runtime interrompe gli altri tentativi dello stesso confronto. Non si esegue
+il fallback al semplice ripristino di un progetto o al salvataggio di Edit text.
+
+I test unitari usano un modello controllato e non scaricano pesi. Verificano
+attivazione automatica, conservazione dei riferimenti e del testo, contesto
+protetto, miglioramento, limiti ed errori. Le soglie restano sperimentali e vanno
+calibrate sui dati PRIMA; la qualità scientifica di LaBSE richiede una valutazione
+separata su esempi reali annotati.
 
 ## Altri componenti
 
@@ -56,4 +68,4 @@ esempi reali annotati dal ricercatore.
 - Le sequenze non corrispondenti che superano il limite computazionale vengono lasciate come omissioni e aggiunte, invece di essere forzate in sostituzioni.
 - La ricostruzione della vista usa le righe del testimone di riferimento come unità di revisione. Per il secondo testimone visualizza frammenti testuali ricondotti alla riga corrispondente e mantiene i riferimenti alle righe fisiche originali.
 - Le proposte di trasposizione non sono ancora state riprogettate per la nuova struttura parola per parola.
-- Le proposte semantiche sono esplicite e consultive: vanno valutate sui dati PRIMA e non sostituiscono il confronto lessicale dei token.
+- Il recupero semantico automatico è soggetto a soglie sperimentali: i passaggi accettati restano da verificare sui dati PRIMA e non costituiscono decisioni editoriali.

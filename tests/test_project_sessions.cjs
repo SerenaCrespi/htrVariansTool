@@ -262,47 +262,43 @@ test('unchanged, cancelled and invalid text edits preserve decisions and origina
  await page.close();
 });
 
-test('semantic proposals are previewed before applying and preserve decisions outside the selected interval',async()=>{
+test('automatic fallback is surfaced without any semantic action and survives save/reopen',async()=>{
  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
- await upload(page,'#fileA',['alfa prima lezione','beta seconda lezione','gamma terza lezione','delta quarta lezione']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['alfa prima variante','beta seconda variante','gamma terza variante','delta quarta variante']);
- await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
- await page.evaluate(()=>groups.forEach((_,i)=>setAll(i,i%2?'ignore':'keep')));
- const before=await page.evaluate(()=>captureProject());
- await page.route('**/api/semantic-status',route=>route.fulfill({json:{engine:'bertalign',status:'available_not_loaded'}}));
- // This controlled proposal tests UI/state transitions, not model quality.
- await page.route('**/api/semantic-proposal',async route=>{
-  const {rows}=route.request().postDataJSON();
-  await route.fulfill({json:{engine:'bertalign',status:'proposal_ready',model:'test-encoder',method:'Bertalign passage anchors + word-level Levenshtein',alignments:[{id:0,a0:0,a1:2,b0:0,b1:2,similarity:0.8,aItems:rows.flatMap(r=>r.aItems),bItems:rows.flatMap(r=>r.bItems)}]}});
+ assert.equal(await page.locator('#semanticBtn').count(),0);assert.equal(await page.locator('#semanticDialog').count(),0);
+ let requests=0;
+ // Simulate the backend's accepted-recovery metadata; the policy and real
+ // entrypoint with a controlled semantic provider are covered by Python tests.
+ await page.route('**/api/align',async route=>{
+  requests++;const response=await route.fetch(),data=await response.json();
+  data.alignment_method='hybrid: automatic Bertalign recovery + word-level Levenshtein';
+  data.alignments[1].alignment_source='bertalign_automatic';data.alignments[1].semantic_review=true;
+  data.semantic_fallback={strategy:'automatic',engine:'bertalign',status:'applied',candidates:1,attempted:1,accepted:1,windows:[{fromUnit:1,toUnit:3,status:'applied'}]};
+  await route.fulfill({json:data});
  });
- await page.locator('#semanticBtn').click();await page.locator('#semanticStart').fill('2');await page.locator('#semanticEnd').fill('3');await page.locator('#requestSemantic').click();
- await page.waitForFunction(()=>!document.getElementById('applySemantic').disabled);
- assert.equal(await page.locator('#semanticPreview .semantic-unit').count(),3);
- assert.deepEqual(await page.evaluate(()=>captureProject()),before);
- await page.locator('#cancelSemantic').click();assert.deepEqual(await page.evaluate(()=>captureProject()),before);
- await page.locator('#semanticBtn').click();await page.locator('#semanticStart').fill('2');await page.locator('#semanticEnd').fill('3');await page.locator('#requestSemantic').click();
- await page.waitForFunction(()=>!document.getElementById('applySemantic').disabled);
- page.once('dialog',dialog=>dialog.accept());await page.locator('#applySemantic').click();
- assert.equal(await page.locator('#semanticDialog').isVisible(),false);
- const after=await page.evaluate(()=>captureProject());
- assert.equal(after.state.pairResults.B.alignments.length,3);
- assert.deepEqual(after.state.pairReviews.B.decisions,{0:before.state.pairReviews.B.decisions[0],2:before.state.pairReviews.B.decisions[3]});
- assert.match(await page.locator('#loadedStatus').textContent(),/reviewer-applied Bertalign/);
- assert.equal(after.state.pairResults.B.semantic_history[0].engine,'bertalign');assert.equal(after.state.pairResults.B.semantic_history[0].resultUnits,1);
- const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);assert.deepEqual(await page.evaluate(()=>captureProject()),after);
- assert.deepEqual(errors,[]);await page.close();
+ await upload(page,'#fileA',['prima riga del testimone','seconda riga del testimone','terza riga del testimone']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['prima riga del testimone','seconda riga del testimone','terza riga del testimone']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ assert.equal(requests,1);assert.match(await page.locator('#automaticSemanticStatus').textContent(),/1 of 1/);
+ assert.match(await page.locator('#unit-1').textContent(),/automatic Bertalign recovery/);
+ await page.locator('#resultFilter').selectOption('uncertain');assert.equal(await page.locator('#results article').count(),1);
+ const json=JSON.parse(await download(page,'#exportJson')),comparison=Object.values(json.comparisons)[0];
+ assert.equal(comparison.semanticFallback.status,'applied');assert.equal(comparison.alignments[1].alignmentSource,'bertalign_automatic');assert.equal(comparison.alignments[1].requiresReview,true);
+ const expected=await page.evaluate(()=>captureProject()),saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ assert.deepEqual(await page.evaluate(()=>captureProject()),expected);assert.match(await page.locator('#automaticSemanticStatus').textContent(),/1 of 1/);assert.deepEqual(errors,[]);await page.close();
 });
 
-test('semantic service reports unavailable models without changing reviews and validates requests',async()=>{
+test('automatic fallback failure keeps lexical output and displays the reason',async()=>{
  const page=await browser.newPage();await page.goto(url);
- const status=await page.request.get(url+'/api/semantic-status');assert.equal(status.status(),200);assert.equal((await status.json()).engine,'bertalign');
- const invalid=await page.request.post(url+'/api/semantic-proposal',{data:{rows:[]}});assert.equal(invalid.status(),400);assert.match((await invalid.json()).error,/Select between/);
- await upload(page,'#fileA',['prima lezione','seconda lezione']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['prima variante','seconda variante']);
+ const good=await page.request.post(url+'/api/align',{data:{sentences:{A:[{text:'identical reliable reference text',refs:[]}],B:[{text:'identical reliable reference text',refs:[]}]}}});
+ assert.equal(good.status(),200);assert.equal((await good.json()).semantic_fallback.status,'not_needed');
+ await page.route('**/api/align',async route=>{
+  const response=await route.fetch(),data=await response.json();
+  data.semantic_fallback={strategy:'automatic',engine:'bertalign',status:'not_installed',candidates:1,attempted:1,accepted:0,windows:[{fromUnit:1,toUnit:2,status:'not_installed'}]};
+  await route.fulfill({json:data});
+ });
+ await upload(page,'#fileA',['prima riga del testimone','seconda riga del testimone']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['prima riga del testimone','seconda riga del testimone']);
  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
- await page.evaluate(()=>setAll(0,'keep'));const before=await page.evaluate(()=>captureProject());
- await page.route('**/api/semantic-status',route=>route.fulfill({json:{engine:'bertalign',status:'not_installed'}}));
- await page.route('**/api/semantic-proposal',route=>route.fulfill({json:{engine:'bertalign',status:'model_unavailable'}}));
- await page.locator('#semanticBtn').click();await page.waitForFunction(()=>document.getElementById('semanticStatus').textContent.includes('not installed'));
- await page.locator('#requestSemantic').click();await page.waitForFunction(()=>document.getElementById('semanticStatus').textContent.includes('could not load'));
- assert.equal(await page.locator('#applySemantic').isDisabled(),true);assert.deepEqual(await page.evaluate(()=>captureProject()),before);
- await page.keyboard.press('Escape');assert.deepEqual(await page.evaluate(()=>captureProject()),before);await page.close();
+ assert.match(await page.locator('#automaticSemanticStatus').textContent(),/not installed/);
+ assert.equal(await page.evaluate(()=>groups.some(g=>g.semantic_review)),false);assert.equal(await page.locator('#results article').count(),2);
+ await page.locator('#language').selectOption('it');assert.match(await page.locator('#automaticSemanticStatus').textContent(),/non è installato/);
+ await page.close();
 });
