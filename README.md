@@ -1,7 +1,7 @@
-# VARIANS · PRIMA Textual Collation
+# HTRVariansTool
 
 A local application for comparing manuscript witnesses transcribed in ALTO XML.
-VARIANS aligns words against a reference witness, lets researchers review and
+HTRVariansTool aligns words against a reference witness, lets researchers review and
 correct the proposed correspondences, and exports decisions as JSON or a TEI
 text with a critical apparatus. Up to **10 witnesses** are supported, including
 the reference.
