@@ -111,3 +111,44 @@ test('malformed alignment and review structures are rejected before replacement'
  }
  await page.close();
 });
+
+test('mixed prose/poetry and name-based IDs export consistently and survive project reopening',async()=>{
+ const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(url);page.on('dialog',dialog=>dialog.accept());
+ await upload(page,'#fileA',['Prima frase completa in prosa','Primo verso splende','Secondo verso risuona','Ultima frase completa in prosa']);
+ await page.locator('#addWitnessBtn').click();
+ await upload(page,'#fileB',['Prima frase completa in prosa','Primo verso mutato','Secondo verso risuona','Ultima frase completa in prosa']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ await page.locator('#dossierNameA').fill('BNCF II.IV.232');await page.locator('#dossierNameA').dispatchEvent('change');
+ await page.locator('#dossierNameB').fill('Tordi.435');await page.locator('#dossierNameB').dispatchEvent('change');
+ await page.evaluate(()=>setAll(1,'keep'));
+ await page.locator('#teiRangesPanel > summary').click();
+ await page.locator('#addGenreRange').click();
+ await page.locator('[data-range="0"][data-field="end"]').fill('1');await page.locator('[data-range="0"][data-field="end"]').dispatchEvent('change');
+ await page.locator('#addGenreRange').click();
+ await page.locator('[data-range="1"][data-field="end"]').fill('3');await page.locator('[data-range="1"][data-field="end"]').dispatchEvent('change');
+ await page.locator('[data-range="1"][data-field="genre"]').selectOption('poetry');
+ await page.locator('#addGenreRange').click();
+ const json=JSON.parse(await download(page,'#exportJson'));
+ assert.equal(json.reference.id,'BNCF_II.IV.232');assert.deepEqual(json.witnesses,{'Tordi.435':'Tordi.435'});
+ assert.deepEqual(Object.keys(json.comparisons),['Tordi.435']);
+ assert.deepEqual(json.structure.ranges,[{start:1,end:1,genre:'prose'},{start:2,end:3,genre:'poetry'},{start:4,end:4,genre:'prose'}]);
+ const tei=await download(page,'#exportTei');
+ const parsed=await page.evaluate(xml=>{
+  const doc=new DOMParser().parseFromString(xml,'application/xml');
+  const ids=[...doc.getElementsByTagName('witness')].map(el=>el.getAttribute('xml:id'));
+  return {parseErrors:doc.getElementsByTagName('parsererror').length,ids,refs:[...doc.querySelectorAll('[wit]')].flatMap(el=>el.getAttribute('wit').split(/\s+/)),paragraphs:[...doc.getElementsByTagName('body')[0].children].filter(el=>el.localName==='p').map(el=>el.textContent),lines:[...doc.getElementsByTagName('l')].map(el=>el.textContent),groups:doc.getElementsByTagName('lg').length,readings:[...doc.getElementsByTagName('rdg')].map(el=>el.textContent)};
+ },tei);
+ assert.equal(parsed.parseErrors,0);assert.deepEqual(parsed.ids,['BNCF_II.IV.232','Tordi.435']);
+ assert.ok(parsed.refs.length>0);assert.ok(parsed.refs.every(ref=>parsed.ids.includes(ref.slice(1))));
+ assert.deepEqual(parsed.paragraphs,['Prima frase completa in prosa','Ultima frase completa in prosa']);
+ assert.equal(parsed.groups,1);assert.equal(parsed.lines.length,2);assert.ok(parsed.readings.includes('mutato'));
+ assert.equal(parsed.lines[1],'Secondo verso risuona');
+ const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ assert.equal(await download(page,'#exportTei'),tei);
+ assert.deepEqual(JSON.parse(await download(page,'#exportJson')),json);
+ // Old saved sessions without the optional range field still reopen uniformly.
+ const legacy=JSON.parse(saved);delete legacy.state.genreRanges;await open(page,JSON.stringify(legacy));
+ assert.deepEqual(await page.evaluate(()=>genreRanges),[]);
+ assert.deepEqual(errors,[]);await page.close();
+});

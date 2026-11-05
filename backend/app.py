@@ -923,8 +923,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(404)
                 return
             self.path = path
-        elif path == "/frontend.js":
-            self.path = "/frontend.js"
+        elif path in {"/frontend.js", "/export-support.js"}:
+            self.path = path
         elif path.startswith("/assets/"):
             name = Path(path).name
             if name not in {"logo_prima.png", "logo_primaWhite.png", "logo_erc.png", "varians_transparency.png"}:

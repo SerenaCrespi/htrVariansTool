@@ -64,6 +64,44 @@ Chromium executable. They start and stop a temporary local backend and check
 multi-witness restoration, unchanged JSON/TEI exports, image reconnection,
 invalid-file rejection, cancellation, and resuming before alignment.
 
+## Mixed prose/poetry and witness identifiers
+
+Open **Mixed prose and poetry** to add intervals with **From unit**, **To unit**,
+and a structure (prose, poetry or drama). For example, units 1–12 can be prose,
+13–28 poetry, and 29–45 prose. Edit the first interval's end before adding the
+next one. Intervals must cover every unit once, in order, with no gaps or overlaps;
+invalid intervals block export and show an explanation. **Use uniform structure**
+clears the intervals and restores the single structure selected beside the export
+button.
+
+Numbering follows the reference units in the **first witness comparison**, named
+in the panel. Expand **Reference unit numbering and source lines** to see the
+numbered readings and their ALTO references, especially when viewing a different
+comparison. A unit is a review row, which may contain multiple physical lines.
+Each poetry unit exports as one `<l>` inside `<lg>`; check and adjust grouping to
+match verse boundaries. Each prose interval exports as one `<p>`. This does not
+automatically infer paragraphs, verse boundaries or stanzas. A retained variant
+that crosses a verse/structure boundary is reported rather than silently omitted;
+adjust the alignment or interval boundaries before exporting.
+
+Intervals are included in saved projects and decisions JSON. Older projects
+without intervals still open using their saved uniform structure.
+
+JSON results and TEI witness identifiers now derive from assigned witness names,
+using the **same identifiers in both formats and in every TEI `wit` reference**.
+Valid names such as `Tordi.435` are preserved; `BNCF II.IV.232` becomes
+`BNCF_II.IV.232`. XML-incompatible characters become underscores, names beginning
+with a number receive `witness_`, and collisions receive `_2`, `_3`, etc.
+The original display names are retained. The panel previews the exported IDs.
+Projects retain internal comparison keys for reopening; those keys are distinct
+from the public identifiers in results exports.
+
+Run the export unit tests without browser dependencies:
+
+```bash
+node --test tests/test_export_support.cjs
+```
+
 ## Alignment
 
 - ALTO lines are flattened into each witness’s ordered word stream.
@@ -81,6 +119,7 @@ All alignments are proposals for scholarly review.
 | `backend/alto_support.py` | ALTO and XML helpers |
 | `backend/relocations.py` | Displaced-passage suggestions |
 | `frontend.js` | Witness loading, review interface, exports |
+| `export-support.js` | Shared witness identifier and mixed-structure export rules |
 | `index.html` | Application interface and styles |
 | `LANCER_LINUX.sh`, `LANCER_MAC.command` | Platform launchers |
 | `start.sh` | Environment setup and server startup |
