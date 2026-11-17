@@ -6,6 +6,7 @@ import unicodedata
 
 
 def _normal(text: str) -> str:
+    """Normalize case and diacritics only for grouping recurring ambiguity labels."""
     text = unicodedata.normalize("NFKD", text.casefold())
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     return " ".join(re.findall(r"[^\W_]+", text, flags=re.UNICODE))
@@ -39,7 +40,6 @@ def find_displaced_passages(a: list[dict], b: list[dict], groups: list[dict], si
     Proposed matches are review aids, never automatic editorial decisions.
     """
     gaps_a = _unmatched_spans(groups, "A")
-    gaps_b = _unmatched_spans(groups, "B")
     aligned_pairs = set()
     for g in groups:
         if g["a1"] > g["a0"] and g["b1"] > g["b0"]:
@@ -91,4 +91,3 @@ def summarize_ambiguities(candidates: list[dict]) -> list[dict]:
         counts[key]["count"] += 1
         counts[key]["candidate_indexes"].append(index)
     return sorted(counts.values(), key=lambda row: row["count"], reverse=True)
-

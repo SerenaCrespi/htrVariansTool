@@ -1,4 +1,10 @@
-"""Bounded, automatic semantic recovery after lexical alignment."""
+"""Bounded, automatic semantic recovery after lexical alignment.
+
+Only sufficiently large weak windows become candidates. A semantic proposal
+must conserve source text/references, retain reliable anchors, and improve the
+word-weighted quality score. Rejected proposals leave lexical rows untouched.
+Diagnostics describe attempts and acceptance; they are not editorial decisions.
+"""
 from collections import Counter
 from copy import deepcopy
 import json
@@ -6,6 +12,7 @@ import json
 import semantic_alignment
 
 WEAK_THRESHOLD = 0.45
+# Reliable rows are protected as anchors even inside a weak-passage window.
 ANCHOR_THRESHOLD = 0.65
 MIN_WINDOW_WORDS = 8
 MIN_GAIN = 0.04
@@ -13,14 +20,17 @@ MAX_ATTEMPTS = 3
 
 
 def _text(row, side):
+    """Join source fragments on one row side without changing their stored readings."""
     return ' '.join(item['text'] for item in row[side])
 
 
 def _counts(row):
+    """Count whitespace-delimited words on A and B for quality weighting."""
     return [len(_text(row, side).split()) for side in ('aItems', 'bItems')]
 
 
 def _score(row, similarity):
+    """Score only two-sided rows; a pure addition or omission supplies no match evidence."""
     a, b = _counts(row)
     return similarity(_text(row, 'aItems'), _text(row, 'bItems')) if a and b else 0.0
 
@@ -52,22 +62,26 @@ def _windows(rows, similarity):
 
 
 def _quality(rows, similarity):
+    """Measure matched-word evidence relative to the longer witness passage."""
     totals = [sum(_counts(row)[side] for row in rows) for side in (0, 1)]
     evidence = sum(min(_counts(row)) * _score(row, similarity) for row in rows)
     return evidence / max(*totals, 1)
 
 
 def _refs(rows, side):
+    """Build order-independent source identities for conservation checks, not display labels."""
     return {json.dumps(ref, sort_keys=True, ensure_ascii=False)
             for row in rows for item in row[side] for ref in item.get('refs', [])}
 
 
 def _signature(row):
+    """Identify an anchor by both readings and their complete source-reference sets."""
     return tuple((_text(row, side), tuple(sorted(_refs([row], side))))
                  for side in ('aItems', 'bItems'))
 
 
 def _valid_source(original, proposed):
+    """Require ordered A text, the same B word inventory, and unchanged source-reference sets."""
     if not isinstance(proposed, list) or not proposed:
         return False
     try:
@@ -75,13 +89,20 @@ def _valid_source(original, proposed):
             before = ''.join(''.join(_text(row, side).split()) for row in original)
             after = ''.join(''.join(_text(row, side).split()) for row in proposed)
             # A remains ordered; B may contain the lexical displaced-run recovery.
-            if (before != after if side == 'aItems' else Counter(before) != Counter(after)):
+            if (before != after if side == 'aItems' else
+                    semantic_alignment.source_tokens(_text_join(original, side)) !=
+                    semantic_alignment.source_tokens(_text_join(proposed, side))):
                 return False
             if _refs(original, side) != _refs(proposed, side):
                 return False
     except (KeyError, TypeError, ValueError):
         return False
     return True
+
+
+def _text_join(rows, side):
+    """Join a window into a witness stream while preserving boundaries between ordinary words."""
+    return ' '.join(_text(row, side) for row in rows)
 
 
 def recover(rows, refine, similarity, proposer=None):
@@ -99,6 +120,7 @@ def recover(rows, refine, similarity, proposer=None):
     unavailable = None
     for start, end in windows:
         record = {'fromUnit': start + 1, 'toUnit': end}
+        # Human-facing diagnostics use inclusive, one-based unit numbers.
         diagnostics['windows'].append(record)
         if unavailable:
             record['status'] = 'not_attempted_after_failure'

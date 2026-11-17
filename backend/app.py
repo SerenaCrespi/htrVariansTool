@@ -6,6 +6,14 @@ Processing overview:
 2. Align the continuous word streams and project results onto review rows.
 3. Provide independent displaced-passage suggestions.
 4. Automatically recover weak passages with validated Bertalign anchors when available.
+
+Data contracts:
+- Parsed units carry original text and refs (file/page/line identity and geometry).
+- Review rows use aItems/bItems fragments; their line intervals are zero-based,
+  half-open source ranges, and displaced B passages need not be monotonic.
+- similarity is match confidence; score is a path objective, not a probability.
+- align_witness_inputs is the HTTP pipeline. align retains the older line-based
+  API for compatibility; both preserve original source readings and references.
 """
 from __future__ import annotations
 
@@ -24,18 +32,14 @@ import xml.etree.ElementTree as ET
 
 import automatic_semantic
 
-from alto_support import ancestors, resolve_tagrefs, tag_definitions
+from alto_support import ancestors, local_name, resolve_tagrefs, tag_definitions
 from relocations import find_displaced_passages, summarize_ambiguities
 
 ROOT = Path(__file__).resolve().parents[1]
 # Bound request size so malformed or unexpectedly large browser payloads do not
 # cause the local server to read unbounded data into memory.
 MAX_BODY = 50 * 1024 * 1024
-
-
-def local_name(tag: str) -> str:
-    """Return an XML element name without its namespace prefix/URI."""
-    return tag.rsplit("}", 1)[-1]
+MAX_DP_CELLS = 250_000
 
 
 def parse_alto(xml_text: str, alto_file: str = "", next_page_start: list[str] | None = None,
@@ -52,6 +56,11 @@ def parse_alto(xml_text: str, alto_file: str = "", next_page_start: list[str] | 
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
         raise ValueError(f"Invalid ALTO XML: {exc}") from exc
+    return _parse_alto_root(root, alto_file, next_page_start, taxonomy)
+
+
+def _parse_alto_root(root, alto_file="", next_page_start=None, taxonomy=None):
+    """Parse an already validated XML tree; bundles reuse each tree once."""
     # ALTO stores some metadata on parent blocks, so retain child-to-parent
     # links to recover block IDs and their semantic tags for each text line.
     parent_map = {child: parent for parent in root.iter() for child in parent}
@@ -154,6 +163,7 @@ def similarity(left: str, right: str) -> float:
         return 1.0
 
     def char_distance(x: str, y: str) -> float:
+        """Return normalized character edit distance as a fractional word-substitution penalty."""
         prev = list(range(len(y) + 1))
         for i, cx in enumerate(x, 1):
             cur = [i]
@@ -243,6 +253,7 @@ def _word_stream(lines: list[dict]) -> list[dict]:
                 surface = current["text"] + following["text"]
                 key = " ".join(normalize(current["text"].rstrip("=-\u00ad") + following["text"]))
                 merged.append({"text": surface, "key": key, "line_index": current["line_index"],
+                               "line_end": following["line_index"] + 1,
                                "refs": current["refs"] + following["refs"],
                                "parts": current["parts"] + following["parts"]})
                 index += 2
@@ -262,6 +273,7 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
     ops = []
 
     def align_gap(a0, a1, b0, b1):
+        """Align the word spans between exact anchors, keeping oversized gaps as explicit unmatched runs."""
         n, m = a1 - a0, b1 - b0
         # Very large nonmatching spans are kept as additions/omissions. This
         # avoids quadratic memory use and prevents unrelated preliminaries
@@ -278,6 +290,7 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
             dp[0][j], back[0][j] = float(j), "insert"
         @lru_cache(maxsize=8192)
         def substitution_cost(left, right):
+            """Cache spelling-level substitution costs inside one bounded word-gap comparison."""
             return 0.0 if left == right else 1.0 - SequenceMatcher(None, left, right).ratio()
 
         for i in range(1, n + 1):
@@ -313,7 +326,8 @@ def _word_items(words: list[dict]) -> list[dict]:
     """Regroup aligned word fragments by their original ALTO line."""
     items = []
     for word in words:
-        line_key = tuple(ref.get("line", "") for ref in word["refs"])
+        line_key = tuple((ref.get("alto_file", ""), ref.get("page", ""), ref.get("line", ""))
+                         for ref in word["refs"])
         if items and items[-1]["_line_key"] == line_key:
             items[-1]["text"] += " " + word["text"]
         else:
@@ -400,6 +414,7 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
     # boundaries, so additions retain their source layout.
     rows = []
     def new_row(a_line=None):
+        """Allocate a review row; absent source sides start as empty half-open intervals."""
         row = {"aItems": [], "bWords": [], "a0": 0, "a1": 0, "b0": 0, "b1": 0}
         if a_line is not None:
             row["a0"], row["a1"] = a_line, a_line + 1
@@ -418,7 +433,7 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
         if op in {"pair", "delete"} and ai is not None:
             next_a = ai
     for op_index, (op, ai, bi) in enumerate(ops):
-        if op == "pair":
+        if op in {"pair", "delete"}:
             line_index = a[ai]["line_index"]
             if current_reference_line != line_index or current_reference_row is None:
                 row = new_row(line_index)
@@ -426,16 +441,8 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
             else:
                 row = current_reference_row
             row["aItems"].append(a[ai])
-            row["bWords"].append(b[bi])
-            current_insertion_line = current_insertion_row = None
-        elif op == "delete":
-            line_index = a[ai]["line_index"]
-            if current_reference_line != line_index or current_reference_row is None:
-                row = new_row(line_index)
-                current_reference_line, current_reference_row = line_index, row
-            else:
-                row = current_reference_row
-            row["aItems"].append(a[ai])
+            if op == "pair":
+                row["bWords"].append(b[bi])
             current_insertion_line = current_insertion_row = None
         else:
             # Unmatched B text always remains separate and is grouped by its
@@ -450,6 +457,8 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
                     # Store the reference position as an empty interval; the
                     # row still displays no A text and keeps B's source line.
                     row["a0"] = row["a1"] = a[next_a]["line_index"]
+                else:
+                    row["a0"] = row["a1"] = len(a_lines)
                 current_insertion_line, current_insertion_row = b_line_index, row
             else:
                 row = current_insertion_row
@@ -457,13 +466,26 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
             row["bWords"].append(b[bi])
 
     # Preserve empty/untokenizable reference lines as visible source rows.
-    represented_line_ids = {ref.get("line") for word in a for ref in word.get("refs", [])}
-    represented_line_indexes = {word["line_index"] for word in a}
+    represented_line_indexes = {index for word in a
+                                for index in range(word["line_index"], word.get("line_end", word["line_index"] + 1))}
     for line_index, line in enumerate(a_lines):
-        ref_ids = {ref.get("line") for ref in line.get("refs", [])}
-        if line_index not in represented_line_indexes and not (ref_ids & represented_line_ids):
+        if line_index not in represented_line_indexes:
             row = new_row(line_index)
-            row["aItems"] = [{"text": line["text"], "refs": line.get("refs", [])}]
+            row["aItems"] = [{"text": line["text"], "key": "", "refs": line.get("refs", [])}]
+            rows.pop()
+            position = next((i for i, existing in enumerate(rows) if existing["a0"] > line_index), len(rows))
+            rows.insert(position, row)
+
+    represented_b = {index for word in b
+                     for index in range(word["line_index"], word.get("line_end", word["line_index"] + 1))}
+    for line_index, line in enumerate(b_lines):
+        if line_index not in represented_b:
+            position = next((i for i, existing in enumerate(rows)
+                             if existing["bWords"] and existing["bWords"][0]["line_index"] > line_index), len(rows))
+            anchor = rows[position]["a0"] if position < len(rows) else len(a_lines)
+            rows.insert(position, {"aItems": [], "bWords": [{"text": line["text"], "key": "",
+                         "line_index": line_index, "refs": line.get("refs", [])}],
+                         "a0": anchor, "a1": anchor, "b0": line_index, "b1": line_index + 1})
 
     # A short word can be split into a B-only row solely because it falls at
     # the end of one ALTO line, while its matching A word starts the next
@@ -521,7 +543,6 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
         if id(left) in used_left or id(right) in used_right:
             continue
         left["bWords"] = right["bWords"]
-        left["similarity"] = score
         used_left.add(id(left)); used_right.add(id(right))
     rows = [row for row in rows if id(row) not in used_right]
 
@@ -529,8 +550,13 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
     for index, row in enumerate(rows):
         a_items = _word_items(row["aItems"])
         b_items = _word_items(row["bWords"])
-        left = " ".join(item["text"] for item in a_items)
-        right = " ".join(item["text"] for item in b_items)
+        if row["bWords"]:
+            row["b0"] = min(word["line_index"] for word in row["bWords"])
+            row["b1"] = max(word.get("line_end", word["line_index"] + 1) for word in row["bWords"])
+        else:
+            row["b0"] = row["b1"] = result[-1]["b1"] if result else 0
+        if row["aItems"]:
+            row["a1"] = max(word.get("line_end", row["a1"]) for word in row["aItems"])
         score_left = " ".join(word["key"] for word in row["aItems"])
         score_right = " ".join(word["key"] for word in row["bWords"])
         result.append({"id": index, "a0": row["a0"], "a1": row["a1"],
@@ -647,12 +673,20 @@ def _recover_boundary_drift(a: list[dict], b: list[dict], groups: list[dict]) ->
 
 
 def _group_quality(a: list[dict], b: list[dict], group: dict) -> float:
+    """Score one pair of line intervals; one-sided groups have zero match evidence."""
     left = " ".join(item["text"] for item in a[group["a0"]:group["a1"]])
     right = " ".join(item["text"] for item in b[group["b0"]:group["b1"]])
     return similarity(left, right) if left and right else 0.0
 
 
+def _alignment_group(a0, a1, b0, b1, a, b):
+    """Construct an uncovered legacy line span with neutral path score and measured similarity."""
+    group = {"a0": a0, "a1": a1, "b0": b0, "b1": b1, "score": 0.0}
+    return {**group, "similarity": _group_quality(a, b, group)}
+
+
 def _crosses_page_boundary(units: list[dict]) -> bool:
+    """Detect multiple page IDs before allowing a local line-boundary merge."""
     pages = [ref.get("page") for unit in units for ref in unit.get("refs", []) if ref.get("page")]
     return len(set(pages)) > 1
 
@@ -751,11 +785,42 @@ def _segment_line_count(segment, units: list[dict], start: int) -> int | None:
     return None
 
 
+def _align_bounded(a, b, a_offset, b_offset):
+    """Partition large witnesses at exact anchors, retaining every source line.
+
+    Anchor-free gaps use bounded proportional tiles. The local weighted DP,
+    including 1:n groups and gaps, remains unchanged inside each tile.
+    """
+    matcher = SequenceMatcher(None, [tuple(normalize(u['text'])) for u in a],
+                              [tuple(normalize(u['text'])) for u in b], autojunk=True)
+    groups = []
+    ai = bi = 0
+    for block in matcher.get_matching_blocks():
+        n, m = block.a - ai, block.b - bi
+        tile_size = max(1, min(128, int(MAX_DP_CELLS ** 0.5)))
+        tiles = max(1, (max(n, m) + tile_size - 1) // tile_size)
+        for tile in range(tiles):
+            a0, a1 = ai + n * tile // tiles, ai + n * (tile + 1) // tiles
+            b0, b1 = bi + m * tile // tiles, bi + m * (tile + 1) // tiles
+            groups.extend(_align_dp(a[a0:a1], b[b0:b1], a_offset + a0, b_offset + b0))
+        for index in range(block.size):
+            a0, b0 = block.a + index, block.b + index
+            groups.append({'a0': a_offset + a0, 'a1': a_offset + a0 + 1,
+                           'b0': b_offset + b0, 'b1': b_offset + b0 + 1,
+                           'score': 1.0, 'similarity': 1.0})
+        ai, bi = block.a + block.size, block.b + block.size
+    for index, group in enumerate(groups):
+        group['id'] = index
+    return groups
+
+
 def _align_dp(a: list[dict], b: list[dict], a_offset: int = 0, b_offset: int = 0) -> list[dict]:
     """Lexical dynamic programming supporting 1:n, n:1, n:m groups and gaps."""
     # Each DP cell represents a prefix of witness A and witness B. A transition
     # consumes one-sided material as a gap or a bounded group from both sides.
     n, m = len(a), len(b)
+    if n * m > MAX_DP_CELLS:
+        return _align_bounded(a, b, a_offset, b_offset)
     dp = [[float("-inf")] * (m + 1) for _ in range(n + 1)]
     back = [[None] * (m + 1) for _ in range(n + 1)]
     dp[0][0] = 0.0
@@ -818,28 +883,35 @@ def parse_alto_bundle(value, taxonomy: dict | None = None) -> list[dict]:
         return parse_alto(value, taxonomy=taxonomy)
     if not isinstance(value, list):
         raise ValueError("ALTO files must be provided as a list.")
+    for item in value:
+        if (not isinstance(item, dict) or not isinstance(item.get("text"), str)
+                or not isinstance(item.get("name", ""), str)):
+            raise ValueError("Each ALTO file must include a filename and XML text.")
     def natural_key(item):
-        name = item.get("name", "") if isinstance(item, dict) else ""
+        """Sort numbered filenames naturally so page2 precedes page10."""
+        name = item.get("name", "")
         return [(0, int(part)) if part.isdigit() else (1, part.casefold())
                 for part in re.split(r"(\d+)", name)]
     # Natural filename order keeps page2 before page10 and allows catchword
     # detection to inspect the first line of the next ALTO file.
     items = sorted(value, key=natural_key)
+    try:
+        roots = [ET.fromstring(item["text"]) for item in items]
+    except ET.ParseError as exc:
+        raise ValueError(f"Invalid ALTO XML: {exc}") from exc
     combined = []
     for position, item in enumerate(items):
-        if not isinstance(item, dict) or not isinstance(item.get("text"), str):
-            raise ValueError("Each ALTO file must include a filename and XML text.")
         following = []
         if position + 1 < len(items):
             try:
-                next_root = ET.fromstring(items[position + 1]["text"])
+                next_root = roots[position + 1]
                 next_page = next((node for node in next_root.iter() if local_name(node.tag) == "Page"), None)
                 first_line = next((node for node in next_page.iter() if local_name(node.tag) == "TextLine"), None) if next_page is not None else None
                 following = normalize(" ".join(node.get("CONTENT", "") for node in first_line.iter()
                                                 if local_name(node.tag) == "String")) if first_line is not None else []
             except (ET.ParseError, KeyError, TypeError):
                 following = []
-        combined.extend(parse_alto(item["text"], item.get("name", ""), following, taxonomy))
+        combined.extend(_parse_alto_root(roots[position], item.get("name", ""), following, taxonomy))
     for index, unit in enumerate(combined, start=1):
         unit["index"] = index
     return combined
@@ -853,8 +925,8 @@ def clean_sentences(value) -> list[dict]:
         if not isinstance(item, dict) or not isinstance(item.get("text"), str):
             raise ValueError(f"Unit {i + 1}: invalid format.")
         refs = item.get("refs", [])
-        if not isinstance(refs, list):
-            refs = []
+        if not isinstance(refs, list) or any(not isinstance(ref, dict) for ref in refs):
+            raise ValueError(f"Unit {i + 1}: invalid source references.")
         cleaned.append({"text": item["text"], "refs": refs, "index": i + 1})
     return cleaned
 
@@ -881,18 +953,20 @@ def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False
     except Exception as exc:
         print(f"[align] Global word alignment failed; using line-level backup: {exc}")
         alignments = []
+    line_groups = None
     if alignments:
         alignment_method = "word-level Levenshtein with global displaced-run recovery"
     else:
         # This backup is lexical. The same automatic quality gate below handles
         # Bertalign; do not load it twice via the old all-or-nothing path.
-        groups = _align_dp(a, b)
-        alignments = _alignment_groups_as_rows(groups, a, b)
+        line_groups = _align_dp(a, b)
+        alignments = _alignment_groups_as_rows(line_groups, a, b)
         alignment_method = "weighted Levenshtein backup"
     alignments, diagnostics = automatic_semantic.recover(alignments, align_alto_words, similarity)
     if diagnostics['accepted']:
         alignment_method = "hybrid: automatic Bertalign recovery + word-level Levenshtein"
-    line_groups = _align_dp(a, b)
+    if line_groups is None:
+        line_groups = _align_dp(a, b)
     transpositions = find_displaced_passages(a, b, line_groups, similarity)
     result = (alignments, alignment_method, transpositions)
     return (*result, diagnostics) if include_diagnostics else result
@@ -901,13 +975,16 @@ def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False
 class Handler(SimpleHTTPRequestHandler):
     """Serve the local UI and the JSON alignment endpoint."""
     def __init__(self, *args, **kwargs):
+        """Serve static UI resources relative to the repository root, independent of the launch directory."""
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
     def log_message(self, fmt, *args):
+        """Prefix standard HTTP logs so local requests can be distinguished from alignment diagnostics."""
         print("[local] " + fmt % args)
 
     def do_GET(self):
         # Restrict local static serving to the UI, bundled samples and assets.
+        """Serve only the listed UI files, approved sample paths, and named assets."""
         path = unquote(urlparse(self.path).path)
         if path == "/":
             self.path = "/index.html"
@@ -940,6 +1017,7 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def _json(self, code, result):
+        """Write a UTF-8 JSON response with an exact byte length and disabled response caching."""
         body = json.dumps(result, ensure_ascii=False).encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -951,6 +1029,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         # The browser sends ALTO bundles (or pre-segmented sentences) here.
         # The server parses, aligns and returns source units plus review data.
+        """Validate /api/align input and return witnesses, review rows, recovery diagnostics, and move suggestions."""
         if urlparse(self.path).path != "/api/align":
             self.send_error(404)
             return
@@ -964,8 +1043,12 @@ class Handler(SimpleHTTPRequestHandler):
             taxonomy = payload.get("taxonomy") if isinstance(payload.get("taxonomy"), dict) else None
             if "alto" in payload:
                 alto = payload["alto"]
+                if not isinstance(alto, dict):
+                    raise ValueError("ALTO witnesses must be a JSON object.")
                 a, b = parse_alto_bundle(alto.get("A", []), taxonomy), parse_alto_bundle(alto.get("B", []), taxonomy)
             elif "sentences" in payload:
+                if not isinstance(payload["sentences"], dict):
+                    raise ValueError("Sentences must be a JSON object.")
                 a = clean_sentences(payload["sentences"].get("A"))
                 b = clean_sentences(payload["sentences"].get("B"))
             else:

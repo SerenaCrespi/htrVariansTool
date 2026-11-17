@@ -1,3 +1,4 @@
+// Pure export-contract tests: no browser, server, or semantic model is required.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {witnessIdentifiers,validateGenreRanges,renderGenreRanges,unitWordOffsets,renderApparatus}=require('../export-support.js');

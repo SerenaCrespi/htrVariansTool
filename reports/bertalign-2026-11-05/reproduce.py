@@ -18,7 +18,9 @@ from app import align_alto_words, align_witness_inputs, parse_alto_bundle
 
 
 def table(rows):
+    """Render escaped source readings for visual inspection of the real runtime output."""
     def text(row, side):
+        """Join one witness reading and escape it before inserting it into the HTML report."""
         return html.escape(' '.join(item['text'] for item in row[side]) or '—')
     return '<table><tr><th>Unità</th><th>A</th><th>B</th></tr>' + ''.join(
         f'<tr><td>{i+1}</td><td>{text(row, "aItems")}</td><td>{text(row, "bItems")}</td></tr>'
@@ -26,6 +28,7 @@ def table(rows):
 
 
 def main():
+    """Run both pipelines on supplied ALTO files and write diagnostics plus a comparison report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--a', default='samples/Malmantile_II.IV.232/IMG_20250905_143230.xml')
     parser.add_argument('--b', default='samples/Malmantile_Tordi.435/IMG_20250905_153318.xml')

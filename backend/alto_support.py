@@ -20,6 +20,7 @@ DEFAULT_TAXONOMY = {
 
 
 def local_name(tag: str) -> str:
+    """Strip the XML namespace URI so ALTO versions share the same element-name checks."""
     return tag.rsplit("}", 1)[-1]
 
 
@@ -64,6 +65,7 @@ def resolve_tagrefs(value: str | None, definitions: dict, taxonomy: dict | None 
 
 
 def ancestors(node, parent_map) -> list:
+    """Return nearest-to-farthest parents using the child-to-parent map built during XML parsing."""
     result = []
     parent = parent_map.get(node)
     while parent is not None:
