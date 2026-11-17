@@ -699,6 +699,8 @@ Object.assign(messages.en, {
     "Save the complete session to resume later. Local images are linked again when you reselect them; they are not included in the project file.",
   "projectOpened":
     "Project opened. Reselect local images to reconnect the facsimiles.",
+  "decisionsOpened":
+    "Decisions reopened. Text and review choices were recovered; original ALTO files and image coordinates are not included in this export.",
   "replaceProject":
     "Opening this project will replace the current session. Save it first if needed. Continue?",
   "invalidProject": "The file is not a valid supported VARIANS project.",
@@ -713,6 +715,8 @@ Object.assign(messages.fr, {
     "Enregistrez la session complète pour la reprendre. Les images locales ne sont pas incluses ; sélectionnez-les à nouveau pour les relier.",
   "projectOpened":
     "Projet ouvert. Sélectionnez à nouveau les images locales pour relier les fac-similés.",
+  "decisionsOpened":
+    "Décisions rouvertes. Le texte et les choix de révision sont récupérés ; les fichiers ALTO et les coordonnées des images ne sont pas inclus dans cet export.",
   "replaceProject":
     "Ouvrir ce projet remplacera la session actuelle. Enregistrez-la si nécessaire. Continuer ?",
   "invalidProject":
@@ -728,6 +732,8 @@ Object.assign(messages.it, {
     "Salva la sessione completa per riprenderla in seguito. Le immagini locali non sono incluse: riselezionale per ricollegarle.",
   "projectOpened":
     "Progetto aperto. Riseleziona le immagini locali per ricollegare i facsimili.",
+  "decisionsOpened":
+    "Decisioni riaperte. Testi e scelte di revisione recuperati; questo export non contiene gli ALTO originali né le coordinate delle immagini.",
   "replaceProject":
     "Aprire questo progetto sostituirà la sessione corrente. Salvala prima se necessario. Continuare?",
   "invalidProject": "Il file non è un progetto VARIANS valido e supportato.",
@@ -1558,8 +1564,13 @@ async function runAlign(useEdited = false, onlyWitnesses = null) {
 function refs(arr) {
   if (!arr.length) return "—";
   return arr
-    .flatMap((x) => x.refs || [])
-    .map((r) => `${r.alto_file || ""} · ${r.page} · ${r.line}`)
+    .flatMap((item) =>
+      item.sourceLabel !== undefined
+        ? [item.sourceLabel]
+        : (item.refs || []).map(
+            (r) => `${r.alto_file || ""} · ${r.page} · ${r.line}`,
+          ),
+    )
     .join(" / ");
 }
 
@@ -2745,6 +2756,7 @@ function showRecurring() {
 // Versioned portable sessions. Images remain external; blob URLs never persist.
 let projectImageLinks = {},
   projectImageFiles = {},
+  projectRecovered = false,
   pendingProjectOperations = 0,
   projectOpening = false;
 const PROJECT_FORMAT = "varians-project",
@@ -2758,6 +2770,7 @@ function captureProject() {
     Object.keys(pairResults).map((id) => [id, currentReview(id)]),
   );
   const state = {
+    ...(projectRecovered ? { recoveredFrom: "decisions-json" } : {}),
     witnessIds,
     names: Object.fromEntries(witnessIds.map((id) => [id, names[id]])),
     rawByWitness: Object.fromEntries(
@@ -2794,6 +2807,140 @@ function captureProject() {
   );
 }
 
+/** Recover review state from a decisions export without inventing missing ALTO XML or geometry.
+ * Keep source labels verbatim; decode only explicit file/page/line triples for image lookup. */
+function projectFromDecisionReport(report) {
+  const obj = (value) =>
+    value !== null && typeof value === "object" && !Array.isArray(value);
+  const fail = () => {
+    throw Error(t("invalidProject"));
+  };
+  if (
+    !obj(report) ||
+    report.format !== undefined ||
+    !obj(report.reference) ||
+    typeof report.reference.name !== "string" ||
+    !obj(report.witnesses) ||
+    !obj(report.comparisons)
+  )
+    fail();
+  const externalIds = Object.keys(report.comparisons);
+  if (
+    !externalIds.length ||
+    externalIds.length > 9 ||
+    Object.keys(report.witnesses).length !== externalIds.length ||
+    externalIds.some(
+      (id) =>
+        !Object.hasOwn(report.witnesses, id) ||
+        typeof report.witnesses[id] !== "string",
+    )
+  )
+    fail();
+  if (
+    report.structure !== undefined &&
+    (!obj(report.structure) ||
+      report.structure.comparisonWitness !== externalIds[0])
+  )
+    fail();
+  const ids = ["A", ...externalIds.map((_, i) => String.fromCharCode(66 + i))];
+  const state = {
+    recoveredFrom: "decisions-json",
+    witnessIds: ids,
+    names: { A: report.reference.name },
+    rawByWitness: Object.fromEntries(ids.map((id) => [id, []])),
+    pairResults: {},
+    pairReviews: {},
+    activeWitness: "B",
+    editedMode: false,
+    language,
+    viewFilter: "all",
+    genre: "prose",
+    genreRanges: report.structure?.ranges || [],
+    iiif: Object.fromEntries(ids.map((id) => [id, ""])),
+    imageFiles: Object.fromEntries(ids.map((id) => [id, []])),
+    imageLinks: {},
+  };
+  const items = (text, label) => {
+    if (!text && (!label || label === "—")) return [];
+    const pointers = label.split(" / ").flatMap((source) => {
+      const parts = source.split(" · ");
+      return parts.length === 3
+        ? [{ alto_file: parts[0], page: parts[1], line: parts[2] }]
+        : [];
+    });
+    return [{ text, refs: pointers, sourceLabel: label }];
+  };
+  externalIds.forEach((externalId, index) => {
+    const id = ids[index + 1],
+      comparison = report.comparisons[externalId];
+    if (
+      !obj(comparison) ||
+      typeof comparison.alignmentMethod !== "string" ||
+      !Array.isArray(comparison.alignments) ||
+      !comparison.alignments.length
+    )
+      fail();
+    state.names[id] = report.witnesses[externalId];
+    const pair = {
+      A: [],
+      B: [],
+      alignments: [],
+      alignment_method: comparison.alignmentMethod,
+      semantic_fallback: comparison.semanticFallback,
+      possible_transpositions: comparison.possibleTranspositions ?? [],
+      frequent_ambiguous_cases: [],
+    };
+    const decisions = {};
+    comparison.alignments.forEach((row, i) => {
+      if (
+        !obj(row) ||
+        row.unit !== i + 1 ||
+        typeof row.readingReference !== "string" ||
+        typeof row.readingWitness !== "string" ||
+        typeof row.sourceReference !== "string" ||
+        typeof row.sourceWitness !== "string" ||
+        !obj(row.decisions) ||
+        !Number.isFinite(row.similarity) ||
+        (row.alignmentSource !== undefined &&
+          typeof row.alignmentSource !== "string") ||
+        (row.requiresReview !== undefined &&
+          typeof row.requiresReview !== "boolean")
+      )
+        fail();
+      const aItems = items(row.readingReference, row.sourceReference),
+        bItems = items(row.readingWitness, row.sourceWitness);
+      const group = {
+        id: i,
+        a0: pair.A.length,
+        a1: pair.A.length + aItems.length,
+        b0: pair.B.length,
+        b1: pair.B.length + bItems.length,
+        aItems,
+        bItems,
+        similarity: row.similarity,
+        score: 0,
+        alignment_source: row.alignmentSource || "lexical",
+        semantic_review: !!row.requiresReview,
+      };
+      pair.A.push(...aItems);
+      pair.B.push(...bItems);
+      pair.alignments.push(group);
+      if (Object.keys(row.decisions).length) decisions[i] = row.decisions;
+    });
+    state.pairResults[id] = pair;
+    state.pairReviews[id] = {
+      decisions,
+      movementDecisions: comparison.movementDecisions ?? {},
+    };
+  });
+  if (state.genreRanges.length)
+    VariansExport.validateGenreRanges(
+      state.genreRanges,
+      state.pairResults.B.alignments.length,
+    );
+  return { format: PROJECT_FORMAT, version: PROJECT_VERSION, state };
+}
+
 /** Validate a version-1 snapshot completely before replacing any live session state.
  * Check shapes, review indices, source references, witness IDs, and URI schemes;
  * reject prototype-related keys before imported objects enter application state. */
@@ -2822,6 +2969,8 @@ function validateProject(project) {
   inspect(project);
   const s = project.state,
     ids = s.witnessIds;
+  if (s.recoveredFrom !== undefined && s.recoveredFrom !== "decisions-json")
+    fail();
   if (
     !strings(ids) ||
     !ids.length ||
@@ -2874,7 +3023,13 @@ function validateProject(project) {
     );
   const units = (value) =>
     Array.isArray(value) &&
-    value.every((u) => obj(u) && typeof u.text === "string" && refs(u.refs));
+    value.every(
+      (u) =>
+        obj(u) &&
+        typeof u.text === "string" &&
+        refs(u.refs) &&
+        (u.sourceLabel === undefined || typeof u.sourceLabel === "string"),
+    );
   for (const id of ids) {
     if (
       typeof s.names[id] !== "string" ||
@@ -3038,6 +3193,7 @@ function restoreProject(s) {
   imageOverrides = {};
   projectImageLinks = s.imageLinks;
   projectImageFiles = s.imageFiles;
+  projectRecovered = s.recoveredFrom === "decisions-json";
   A = [];
   B = [];
   groups = [];
@@ -3076,7 +3232,9 @@ function restoreProject(s) {
   }
   render();
   renderMovements();
-  $("projectStatus").textContent = t("projectOpened");
+  $("projectStatus").textContent = t(
+    projectRecovered ? "decisionsOpened" : "projectOpened",
+  );
   for (const id of witnessIds)
     if (s.imageFiles[id].length)
       $(`imageCount${id}`).textContent = t("relinkImages", {
@@ -3095,7 +3253,10 @@ async function openProjectFile(file) {
   projectOpening = true;
   try {
     if (file.size > MAX_PROJECT_BYTES) throw Error(t("projectTooLarge"));
-    const s = validateProject(JSON.parse(await file.text()));
+    let project = JSON.parse(await file.text());
+    if (project?.format === undefined && project?.comparisons)
+      project = projectFromDecisionReport(project);
+    const s = validateProject(project);
     const hasSession =
       Object.values(rawByWitness).some((files) => files.length) ||
       Object.keys(pairResults).length ||

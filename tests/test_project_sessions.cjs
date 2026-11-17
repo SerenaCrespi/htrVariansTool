@@ -47,6 +47,28 @@ test('editing A in one comparison does not move another witness variant to a dif
 async function download(page,button){const pending=page.waitForEvent('download');await page.locator(button).click();if(button==='#exportTei')await page.locator('#confirmTeiExport').click();const file=await pending;return readFile(await file.path(),'utf8')}
 async function open(page,content){await page.locator('#projectFile').setInputFiles({name:'project.json',mimeType:'application/json',buffer:Buffer.from(content)});await page.waitForFunction(()=>pendingProjectOperations===0)}
 
+test('Open project accepts an older decisions JSON and saves a reusable recovered project',async()=>{
+ const page=await browser.newPage();await page.goto(url);
+ await upload(page,'#fileA',['alfa beta']);await page.locator('#addWitnessBtn').click();
+ await upload(page,'#fileB',['alfa gamma']);await page.waitForFunction(()=>groups.length&&pendingProjectOperations===0);
+ await page.evaluate(()=>setAll(0,'keep'));
+ const report=await page.evaluate(()=>buildJSONExport());
+ for(const comparison of Object.values(report.comparisons)){
+  delete comparison.possibleTranspositions;delete comparison.movementDecisions;
+ }
+ await page.reload();
+ const pending=page.waitForEvent('filechooser');await page.locator('#openProject').click();
+ await (await pending).setFiles({name:'collation-decisions.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(report))});
+ await page.waitForFunction(()=>pendingProjectOperations===0&&groups.length>0);
+ assert.match(await page.locator('#projectStatus').textContent(),/Decisions reopened/);
+ const output=await page.evaluate(()=>buildJSONExport());
+ const id=Object.keys(report.comparisons)[0];assert.deepEqual(output.comparisons[id].alignments,report.comparisons[id].alignments);
+ const saved=await download(page,'#saveProject');assert.equal(JSON.parse(saved).state.recoveredFrom,'decisions-json');
+ await page.reload();await open(page,saved);assert.deepEqual(await page.evaluate(()=>buildJSONExport()),output);
+ assert.match(await page.locator('#projectStatus').textContent(),/original ALTO/);
+ await page.close();
+});
+
 test('save/reopen preserves multi-witness edits, decisions, exports, settings and image links',async()=>{
  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(url);await page.locator('#language').selectOption('it');

@@ -58,3 +58,44 @@ test('JSON decisions include reviewed movement candidates',()=>{
  const data=JSON.parse(run('JSON.stringify(buildJSONExport())'));
  assert.equal(data.comparisons.B.movementDecisions[0],'confirm');assert.equal(data.comparisons.B.possibleTranspositions[0].text_a,'a');
 });
+
+function decisionReport(){
+ return {reference:{id:'Reference',name:'Reference'},witnesses:{Witness:'Witness'},
+  structure:{comparisonWitness:'Witness',ranges:[{start:1,end:1,genre:'prose'}]},comparisons:{Witness:{
+   alignmentMethod:'word-level Levenshtein',alignments:[{unit:1,readingReference:'alfa beta',readingWitness:'alfa gamma',
+    sourceReference:'a.xml · p · l1',sourceWitness:'b.xml · p · l2',decisions:{0:'keep'},similarity:.5,
+    alignmentSource:'lexical',requiresReview:false}]}}};
+}
+test('a decisions report reopens with its exact readings, source labels, decisions and genre ranges',()=>{
+ const {run,context}=setup();context.input=decisionReport();
+ run('const recovered=projectFromDecisionReport(input);validateProject(recovered);restoreProject(recovered.state)');
+ const output=JSON.parse(run('JSON.stringify(buildJSONExport())'));
+ assert.deepEqual(output.comparisons.Witness.alignments,context.input.comparisons.Witness.alignments);
+ assert.deepEqual(output.structure,context.input.structure);
+ assert.equal(run('rawByWitness.A.length'),0);assert.equal(run('pairResults.B.A[0].refs[0].coords'),undefined);
+ const snapshot=JSON.parse(run('JSON.stringify(captureProject())'));
+ assert.equal(snapshot.state.recoveredFrom,'decisions-json');
+ context.snapshot=snapshot;run('restoreProject(validateProject(snapshot))');
+ assert.deepEqual(JSON.parse(run('JSON.stringify(captureProject())')),snapshot);
+});
+test('newer decisions reports retain displacement confirmations and unknown source labels',()=>{
+ const {run,context}=setup();const report=decisionReport(),comparison=report.comparisons.Witness;
+ comparison.alignments[0].sourceReference='manual source label';
+ comparison.possibleTranspositions=[{text_a:'alpha',text_b:'alpha',source_a:[],source_b:[],score:1,margin:1}];
+ comparison.movementDecisions={0:'confirm'};context.input=report;
+ run('restoreProject(validateProject(projectFromDecisionReport(input)))');
+ const output=JSON.parse(run('JSON.stringify(buildJSONExport())')).comparisons.Witness;
+ assert.equal(output.alignments[0].sourceReference,'manual source label');
+ assert.equal(output.movementDecisions[0],'confirm');assert.deepEqual(output.possibleTranspositions,comparison.possibleTranspositions);
+});
+test('malformed decision reports cannot replace the current session',async()=>{
+ const {run,context}=setup();run(`pairResults={B:pair('original','reading')};pairReviews={B:{decisions:{},movementDecisions:{}}};activatePair('B',false)`);
+ const before=run('JSON.stringify(captureProject())');
+ for(const mutate of [r=>{r.comparisons.Witness.alignments[0].decisions={999:'keep'}},
+   r=>{r.witnesses.Witness=42},r=>{r.comparisons.Witness.alignments[0].readingReference=null},
+   r=>{r.structure.ranges[0].end=99},r=>{r.version=99;r.format='varians-project'}]){
+  const report=decisionReport();mutate(report);context.input=JSON.stringify(report);
+  await run('openProjectFile({size:input.length,text:async()=>input})');
+  assert.equal(run('JSON.stringify(captureProject())'),before);
+ }
+});

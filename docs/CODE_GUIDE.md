@@ -96,6 +96,9 @@ review layer and do not themselves set editorial decisions.
 
 - **Decision JSON** includes each comparison's readings, human-readable source
   labels, variant decisions, semantic diagnostics, and displacement reviews.
+  Open project also accepts this report format and recovers a review session.
+  Missing original ALTO XML and image geometry remain absent; the interface
+  reports this limitation. A recovered session can be saved as a project.
 - **Project JSON** uses `format: "varians-project"` and `version: 1`. It includes
   original XML, comparison data, settings, and image associations. Validate the
   entire snapshot before replacing live state; keep version-1 compatibility when

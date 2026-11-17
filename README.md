@@ -160,7 +160,7 @@ inference must be evaluated separately on real passages.
 | Action | File | Purpose |
 |---|---|---|
 | **Save project** | `varians-project.json` | Resume the complete editing session later |
-| **Open project** | A saved project JSON | Restore the session without recalculating alignment |
+| **Open project** | A project or decisions JSON | Restore a session or recover exported readings and review choices |
 | **Export decisions JSON** | Localized JSON filename | Use the reviewed results and structure settings outside the app |
 | **Export full TEI text** | Localized XML filename | Export the text with retained variants and the selected TEI structure |
 
@@ -181,7 +181,13 @@ may create another browser download rather than overwrite the previous file.
 
 **Open project** asks before replacing an existing session. Invalid files,
 unsupported format versions and files larger than 100 MB are rejected without
-replacing the current session. A decisions JSON export is not a resumable project.
+replacing the current session.
+
+A decisions JSON export can also be opened. Its readings, review choices, source
+labels and genre ranges are recovered, and the result can be saved as a project.
+The export does not contain original ALTO XML or image coordinates: these are not
+reconstructed, and the interface reports the missing source data. Import the
+original ALTO files when a new source-based alignment is needed.
 
 Local image files are **not embedded**. Reselect them for each witness after
 opening a project; manual associations reconnect by filename. Use unique image
