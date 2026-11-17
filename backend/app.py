@@ -6,6 +6,14 @@ Processing overview:
 2. Align the continuous word streams and project results onto review rows.
 3. Provide independent displaced-passage suggestions.
 4. Automatically recover weak passages with validated Bertalign anchors when available.
+
+Data contracts:
+- Parsed units carry original text and refs (file/page/line identity and geometry).
+- Review rows use aItems/bItems fragments; their line intervals are zero-based,
+  half-open source ranges, and displaced B passages need not be monotonic.
+- similarity is match confidence; score is a path objective, not a probability.
+- align_witness_inputs is the HTTP pipeline. align retains the older line-based
+  API for compatibility; both preserve original source readings and references.
 """
 from __future__ import annotations
 
@@ -155,6 +163,7 @@ def similarity(left: str, right: str) -> float:
         return 1.0
 
     def char_distance(x: str, y: str) -> float:
+        """Return normalized character edit distance as a fractional word-substitution penalty."""
         prev = list(range(len(y) + 1))
         for i, cx in enumerate(x, 1):
             cur = [i]
@@ -264,6 +273,7 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
     ops = []
 
     def align_gap(a0, a1, b0, b1):
+        """Align the word spans between exact anchors, keeping oversized gaps as explicit unmatched runs."""
         n, m = a1 - a0, b1 - b0
         # Very large nonmatching spans are kept as additions/omissions. This
         # avoids quadratic memory use and prevents unrelated preliminaries
@@ -280,6 +290,7 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
             dp[0][j], back[0][j] = float(j), "insert"
         @lru_cache(maxsize=8192)
         def substitution_cost(left, right):
+            """Cache spelling-level substitution costs inside one bounded word-gap comparison."""
             return 0.0 if left == right else 1.0 - SequenceMatcher(None, left, right).ratio()
 
         for i in range(1, n + 1):
@@ -403,6 +414,7 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
     # boundaries, so additions retain their source layout.
     rows = []
     def new_row(a_line=None):
+        """Allocate a review row; absent source sides start as empty half-open intervals."""
         row = {"aItems": [], "bWords": [], "a0": 0, "a1": 0, "b0": 0, "b1": 0}
         if a_line is not None:
             row["a0"], row["a1"] = a_line, a_line + 1
@@ -661,17 +673,20 @@ def _recover_boundary_drift(a: list[dict], b: list[dict], groups: list[dict]) ->
 
 
 def _group_quality(a: list[dict], b: list[dict], group: dict) -> float:
+    """Score one pair of line intervals; one-sided groups have zero match evidence."""
     left = " ".join(item["text"] for item in a[group["a0"]:group["a1"]])
     right = " ".join(item["text"] for item in b[group["b0"]:group["b1"]])
     return similarity(left, right) if left and right else 0.0
 
 
 def _alignment_group(a0, a1, b0, b1, a, b):
+    """Construct an uncovered legacy line span with neutral path score and measured similarity."""
     group = {"a0": a0, "a1": a1, "b0": b0, "b1": b1, "score": 0.0}
     return {**group, "similarity": _group_quality(a, b, group)}
 
 
 def _crosses_page_boundary(units: list[dict]) -> bool:
+    """Detect multiple page IDs before allowing a local line-boundary merge."""
     pages = [ref.get("page") for unit in units for ref in unit.get("refs", []) if ref.get("page")]
     return len(set(pages)) > 1
 
@@ -873,6 +888,7 @@ def parse_alto_bundle(value, taxonomy: dict | None = None) -> list[dict]:
                 or not isinstance(item.get("name", ""), str)):
             raise ValueError("Each ALTO file must include a filename and XML text.")
     def natural_key(item):
+        """Sort numbered filenames naturally so page2 precedes page10."""
         name = item.get("name", "")
         return [(0, int(part)) if part.isdigit() else (1, part.casefold())
                 for part in re.split(r"(\d+)", name)]
@@ -959,13 +975,16 @@ def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False
 class Handler(SimpleHTTPRequestHandler):
     """Serve the local UI and the JSON alignment endpoint."""
     def __init__(self, *args, **kwargs):
+        """Serve static UI resources relative to the repository root, independent of the launch directory."""
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
     def log_message(self, fmt, *args):
+        """Prefix standard HTTP logs so local requests can be distinguished from alignment diagnostics."""
         print("[local] " + fmt % args)
 
     def do_GET(self):
         # Restrict local static serving to the UI, bundled samples and assets.
+        """Serve only the listed UI files, approved sample paths, and named assets."""
         path = unquote(urlparse(self.path).path)
         if path == "/":
             self.path = "/index.html"
@@ -998,6 +1017,7 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def _json(self, code, result):
+        """Write a UTF-8 JSON response with an exact byte length and disabled response caching."""
         body = json.dumps(result, ensure_ascii=False).encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -1009,6 +1029,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         # The browser sends ALTO bundles (or pre-segmented sentences) here.
         # The server parses, aligns and returns source units plus review data.
+        """Validate /api/align input and return witnesses, review rows, recovery diagnostics, and move suggestions."""
         if urlparse(self.path).path != "/api/align":
             self.send_error(404)
             return

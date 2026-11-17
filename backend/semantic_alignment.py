@@ -1,4 +1,10 @@
-"""Optional Bertalign passage proposals used by automatic lexical recovery."""
+"""Optional Bertalign passage proposals used by automatic lexical recovery.
+
+Importing this module never loads the model. propose validates input before a
+shared lock protects lazy runtime initialization and inference. Bertalign maps
+short context blocks; the supplied lexical refine callback rebuilds review rows
+inside each mapped span. The caller still decides whether a proposal is useful.
+"""
 from __future__ import annotations
 
 from collections import Counter
@@ -9,6 +15,7 @@ from numbers import Integral
 import threading
 
 _LOCK = threading.Lock()
+# Reuse the heavyweight encoder across requests; status describes the latest attempt.
 _RUNTIME = None
 _LAST_STATUS = None
 MAX_ROWS = 40
@@ -17,6 +24,7 @@ MAX_ITEMS = 160
 
 
 def runtime_status():
+    """Inspect package/runtime availability without loading the encoder or downloading a model."""
     if _RUNTIME is not None:
         state = _LAST_STATUS or 'ready'
     else:
@@ -39,6 +47,7 @@ def _load_runtime():
 
 
 def _inputs(rows):
+    """Validate bounded review rows and return independent source-fragment lists for both witnesses."""
     if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_ROWS:
         raise ValueError(f'Select between 1 and {MAX_ROWS} review units.')
     sides = [[], []]
@@ -84,6 +93,7 @@ def _blocks(units):
 
 
 def _spans(beads, left, right):
+    """Convert ordered Bertalign block indices into half-open source-fragment spans with full coverage."""
     if not isinstance(beads, (list, tuple)) or not beads:
         raise ValueError('Empty semantic alignment.')
     ai = bi = 0
@@ -117,6 +127,7 @@ def source_tokens(text):
 def _conserved(original, rows, key):
     # Logical continuation tokens may join physical-line fragments. Removing
     # whitespace lets us check text conservation without undoing that join.
+    """Require the same source-word inventory while allowing physical continuation fragments to join."""
     before = source_tokens(' '.join(u['text'] for u in original))
     after = source_tokens(' '.join(u['text'] for row in rows for u in row[key]))
     return before == after

@@ -360,3 +360,7 @@ Released under the MIT License. See [`LICENSE`](LICENSE).
 ## Acknowledgements
 
 This software is developed within the **PRIMA project**, funded by the **European Research Council (ERC)**.
+## Developer documentation
+
+For the source-code map, data contracts, state ownership, export rules, and test
+commands, see [Reading and maintaining the code](docs/CODE_GUIDE.md).

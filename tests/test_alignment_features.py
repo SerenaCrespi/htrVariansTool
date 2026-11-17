@@ -1,3 +1,4 @@
+"""ALTO metadata and legacy line-alignment compatibility tests using small XML fixtures."""
 import sys
 import unittest
 from pathlib import Path

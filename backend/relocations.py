@@ -6,6 +6,7 @@ import unicodedata
 
 
 def _normal(text: str) -> str:
+    """Normalize case and diacritics only for grouping recurring ambiguity labels."""
     text = unicodedata.normalize("NFKD", text.casefold())
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     return " ".join(re.findall(r"[^\W_]+", text, flags=re.UNICODE))

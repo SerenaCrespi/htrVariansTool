@@ -1,3 +1,5 @@
+// Exercise the real controller with an in-memory DOM and controlled response ordering.
+// These cases cover source/export regressions without requiring a downloaded model.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
