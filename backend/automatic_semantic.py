@@ -75,13 +75,19 @@ def _valid_source(original, proposed):
             before = ''.join(''.join(_text(row, side).split()) for row in original)
             after = ''.join(''.join(_text(row, side).split()) for row in proposed)
             # A remains ordered; B may contain the lexical displaced-run recovery.
-            if (before != after if side == 'aItems' else Counter(before) != Counter(after)):
+            if (before != after if side == 'aItems' else
+                    semantic_alignment.source_tokens(_text_join(original, side)) !=
+                    semantic_alignment.source_tokens(_text_join(proposed, side))):
                 return False
             if _refs(original, side) != _refs(proposed, side):
                 return False
     except (KeyError, TypeError, ValueError):
         return False
     return True
+
+
+def _text_join(rows, side):
+    return ' '.join(_text(row, side) for row in rows)
 
 
 def recover(rows, refine, similarity, proposer=None):

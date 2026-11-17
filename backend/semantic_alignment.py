@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 import importlib.util
+import re
 from numbers import Integral
 import threading
 
@@ -108,11 +109,16 @@ def _spans(beads, left, right):
     return spans
 
 
+def source_tokens(text):
+    """Count source words while allowing printed continuation fragments to join."""
+    return Counter(re.sub(r"(?<=[=\-\u00ad])\s+", "", text).split())
+
+
 def _conserved(original, rows, key):
     # Logical continuation tokens may join physical-line fragments. Removing
     # whitespace lets us check text conservation without undoing that join.
-    before = Counter(''.join(''.join(u['text'].split()) for u in original))
-    after = Counter(''.join(''.join(u['text'].split()) for row in rows for u in row[key]))
+    before = source_tokens(' '.join(u['text'] for u in original))
+    after = source_tokens(' '.join(u['text'] for row in rows for u in row[key]))
     return before == after
 
 

@@ -19,6 +19,31 @@ before(async()=>{
 after(async()=>{if(browser)await browser.close();if(server&&server.exitCode===null){server.kill();await once(server,'exit')}if(dir)await rm(dir,{recursive:true,force:true})});
 const alto=lines=>`<alto><Layout><Page ID="p" WIDTH="1000" HEIGHT="1000"><TextBlock>${lines.map((text,i)=>`<TextLine ID="l${i}" HPOS="10" VPOS="${i*30}" WIDTH="500" HEIGHT="20"><String CONTENT="${text}"/></TextLine>`).join('')}</TextBlock></Page></Layout></alto>`;
 const upload=(page,id,text)=>page.locator(id).setInputFiles({name:'page.xml',mimeType:'text/xml',buffer:Buffer.from(alto(text))});
+
+test('a manually inserted word remains inside its unit in the exported TEI',async()=>{
+ const page=await browser.newPage();await page.goto(url);
+ await upload(page,'#fileA',['alfa beta']);await page.locator('#addWitnessBtn').click();
+ await upload(page,'#fileB',['alfa beta']);await page.waitForFunction(()=>groups.length&&pendingProjectOperations===0);
+ await page.evaluate(()=>editUnit(0));await page.locator('#editB').fill('alfa x beta');
+ await page.locator('#saveEditBtn').click();await page.evaluate(()=>setAll(0,'keep'));
+ const xml=await page.evaluate(()=>buildTEI());
+ assert.match(xml,/<p>alfa <app/);assert.match(xml,/>x<\/rdg>/);assert.match(xml,/<\/app> beta<\/p>/);
+ await page.close();
+});
+
+test('editing A in one comparison does not move another witness variant to a different lemma',async()=>{
+ const page=await browser.newPage();await page.goto(url);
+ await upload(page,'#fileA',['uno due tre']);await page.locator('#addWitnessBtn').click();
+ await upload(page,'#fileB',['uno due tre']);await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+ await page.locator('#addWitnessBtn').click();await upload(page,'#fileC',['uno due QUATTRO']);
+ await page.waitForFunction(()=>Object.keys(pairResults).length===2&&pendingProjectOperations===0);
+ await page.evaluate(()=>{activatePair('C');setAll(0,'keep');activatePair('B');editUnit(0)});
+ await page.locator('#editA').fill('uno extra due tre');await page.locator('#saveEditBtn').click();
+ const xml=await page.evaluate(()=>buildTEI());
+ assert.match(xml,/<lem wit="[^"]*">tre<\/lem>/);assert.match(xml,/>QUATTRO<\/rdg>/);
+ assert.doesNotMatch(xml,/<lem wit="[^"]*">due<\/lem>/);
+ await page.close();
+});
 async function download(page,button){const pending=page.waitForEvent('download');await page.locator(button).click();if(button==='#exportTei')await page.locator('#confirmTeiExport').click();const file=await pending;return readFile(await file.path(),'utf8')}
 async function open(page,content){await page.locator('#projectFile').setInputFiles({name:'project.json',mimeType:'application/json',buffer:Buffer.from(content)});await page.waitForFunction(()=>pendingProjectOperations===0)}
 
