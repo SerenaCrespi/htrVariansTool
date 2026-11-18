@@ -874,8 +874,10 @@ def _alignment_groups_as_rows(groups: list[dict], a: list[dict], b: list[dict]) 
     return rows
 
 
-def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False):
+def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False, progress=None):
     """Lexical first; automatically try semantic recovery on weak passages."""
+    if progress:
+        progress(1)
     try:
         alignments = align_alto_words(a, b)
     except Exception as exc:
@@ -889,9 +891,13 @@ def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False
         groups = _align_dp(a, b)
         alignments = _alignment_groups_as_rows(groups, a, b)
         alignment_method = "weighted Levenshtein backup"
+    if progress:
+        progress(2)
     alignments, diagnostics = automatic_semantic.recover(alignments, align_alto_words, similarity)
     if diagnostics['accepted']:
         alignment_method = "hybrid: automatic Bertalign recovery + word-level Levenshtein"
+    if progress:
+        progress(3)
     line_groups = _align_dp(a, b)
     transpositions = find_displaced_passages(a, b, line_groups, similarity)
     result = (alignments, alignment_method, transpositions)
@@ -954,6 +960,24 @@ class Handler(SimpleHTTPRequestHandler):
         if urlparse(self.path).path != "/api/align":
             self.send_error(404)
             return
+        streaming = self.headers.get("Accept") == "application/x-ndjson"
+
+        def send_event(event):
+            self.wfile.write((json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8"))
+            self.wfile.flush()
+
+        if streaming:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+
+        def progress(completed):
+            if streaming:
+                send_event({"completed": completed})
+
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > MAX_BODY:
@@ -974,7 +998,7 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("Each witness must contain at least one textual unit.")
             # Both uploaded ALTO and frontend-prepared sentence payloads use
             # the same continuous word-stream alignment.
-            alignments, alignment_method, transpositions, diagnostics = align_witness_inputs(a, b, include_diagnostics=True)
+            alignments, alignment_method, transpositions, diagnostics = align_witness_inputs(a, b, include_diagnostics=True, progress=progress if streaming else None)
             result = {
                 "witnesses": {"A": a, "B": b},
                 "alignments": alignments,
@@ -985,9 +1009,17 @@ class Handler(SimpleHTTPRequestHandler):
                 "taxonomy_available": any(ref.get("line_tags") or ref.get("block_tags")
                     for witness in (a, b) for unit in witness for ref in unit.get("refs", [])),
             }
-            self._json(200, result)
+            if streaming:
+                send_event({"result": result})
+            else:
+                self._json(200, result)
+        except (BrokenPipeError, ConnectionResetError):
+            return
         except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            self._json(400, {"error": str(exc)})
+            if streaming:
+                send_event({"error": str(exc)})
+            else:
+                self._json(400, {"error": str(exc)})
 
 
 

@@ -93,11 +93,17 @@ messages.en.empty='Select the reference dossier and at least one other witness t
 Object.assign(messages.en,{exportMenu:'Export',aligningWitnesses:'Aligning witnesses…',alignmentComplete:'Alignment complete',titleLines:'Title lines',titleLinesHint:'Select the reference lines to export as TEI headings.',titleLineBoundary:'A title line crosses a genre interval boundary. Include the whole line in one interval.',noTitleLines:'No reference ALTO lines available.'});
 Object.assign(messages.fr,{exportMenu:'Exporter',aligningWitnesses:'Alignement des témoins…',alignmentComplete:'Alignement terminé',titleLines:'Lignes de titre',titleLinesHint:'Sélectionnez les lignes du témoin de référence à exporter comme titres TEI.',titleLineBoundary:'Une ligne de titre chevauche deux intervalles de genre. Placez la ligne entière dans un seul intervalle.',noTitleLines:'Aucune ligne ALTO de référence disponible.'});
 Object.assign(messages.it,{exportMenu:'Esporta',aligningWitnesses:'Allineamento dei testimoni…',alignmentComplete:'Allineamento completo',titleLines:'Righe di titolo',titleLinesHint:'Seleziona le righe del testimone di riferimento da esportare come titoli TEI.',titleLineBoundary:'Una riga di titolo attraversa il confine tra due intervalli di genere. Includi l’intera riga in un solo intervallo.',noTitleLines:'Nessuna riga ALTO di riferimento disponibile.'});
+Object.assign(messages.en,{pairView:'Pair',allViews:'All witnesses',focusView:'Line by line',previousLine:'Previous line',nextLine:'Next line',linePosition:'Line {n} of {total}',facsimiles:'Facsimiles',loadingImages:'Loading facsimiles…',pairReference:'Reference in this comparison',alignmentSteps:'{done}/{total} stages completed · {left} remaining',stage0:'Reading ALTO',stage1:'Aligning words',stage2:'Checking uncertain passages',stage3:'Checking displaced passages'});
+Object.assign(messages.it,{pairView:'Coppia',allViews:'Tutti i testimoni',focusView:'Riga per riga',previousLine:'Riga precedente',nextLine:'Riga successiva',linePosition:'Riga {n} di {total}',facsimiles:'Facsimili',loadingImages:'Caricamento dei facsimili…',pairReference:'Riferimento in questo confronto',alignmentSteps:'{done}/{total} fasi completate · {left} rimanenti',stage0:'Lettura degli ALTO',stage1:'Allineamento delle parole',stage2:'Verifica dei passaggi incerti',stage3:'Verifica dei passaggi spostati'});
+Object.assign(messages.fr,{pairView:'Paire',allViews:'Tous les témoins',focusView:'Ligne par ligne',previousLine:'Ligne précédente',nextLine:'Ligne suivante',linePosition:'Ligne {n} sur {total}',facsimiles:'Fac-similés',loadingImages:'Chargement des fac-similés…',pairReference:'Référence de cette comparaison',alignmentSteps:'{done}/{total} étapes terminées · {left} restantes',stage0:'Lecture des ALTO',stage1:'Alignement des mots',stage2:'Vérification des passages incertains',stage3:'Vérification des passages déplacés'});
+const ALIGNMENT_STAGES=4;
+const alignmentJobs=new Set();
+let witnessView='pair',focusRow=0;
 let titleLines=new Set(),alignmentsInProgress=0;
 let language='en',viewFilter='all',genreRanges=[],uniformGenre='prose',teiExportDraft=null;
 function t(key,vars={}){let value=(messages[language]||messages.en)[key]||messages.en[key]||key;return value.replace(/\{(\w+)\}/g,(_,name)=>vars[name]??'')}
 function setImageStatus(which,status){imageStatus[which]=status;const el=$(`imageCount${which}`);if(!status){el.textContent=t('none');el.removeAttribute('title');return}const good=status.good||[],bad=status.bad||[],short=good.length>3?`${good.slice(0,3).join(', ')} +${good.length-3}`:good.join(', ');el.textContent=bad.length?t('imagePartial',{n:good.length,files:bad.join(', ')}):good.length?t('imageVerified',{n:good.length,files:short}):t('imageInvalid');el.title=[...good.map(x=>`✓ ${x}`),...bad.map(x=>`✗ ${x}`)].join('\n')}
-function setLanguage(code){language=messages[code]?code:'en';document.documentElement.lang=language;document.title=language==='fr'?'PRIMA · Espace de collation':language==='it'?'PRIMA · Spazio di collazione':'PRIMA · Collation workspace';document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('iiifA').placeholder=t('optionalFallback');if(A.length&&B.length){$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[activeWitness]||''})+(alignmentMethod?` · ${t(alignmentMethod)}`:'');$('alignSummary').textContent=t('alignmentSummary',{n:groups.length})}else $('loadedStatus').textContent=t('noCorpus');witnessIds.forEach(id=>{if($(`imageCount${id}`))setImageStatus(id,imageStatus[id]||null)});renderWitnessInputs();renderComparisonControl();renderAutomaticSemanticStatus();renderGenreEditor();if(groups.length){render();renderMovements()}}
+function setLanguage(code){language=messages[code]?code:'en';document.documentElement.lang=language;document.title=language==='fr'?'PRIMA · Espace de collation':language==='it'?'PRIMA · Spazio di collazione':'PRIMA · Collation workspace';document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('iiifA').placeholder=t('optionalFallback');if(A.length&&B.length){$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[activeWitness]||''})+(alignmentMethod?` · ${t(alignmentMethod)}`:'');$('alignSummary').textContent=t('alignmentSummary',{n:groups.length})}else $('loadedStatus').textContent=t('noCorpus');witnessIds.forEach(id=>{if($(`imageCount${id}`))setImageStatus(id,imageStatus[id]||null)});renderWitnessInputs();renderComparisonControl();renderAutomaticSemanticStatus();renderAlignmentProgress();renderGenreEditor();if(groups.length){render();renderMovements()}}
 function decodeImage(url){return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>img.naturalWidth&&img.naturalHeight?resolve():reject(Error('empty image'));img.onerror=()=>reject(Error('unreadable image'));img.src=url})}
 async function loadFile(which,fileList){
  if(!fileList||!fileList.length)return;
@@ -120,7 +126,7 @@ async function loadFile(which,fileList){
   }
  }catch(e){rollback();alert(e.message)}
 }
-async function loadImages(which,fileList){if(!fileList)return;const selected=[...fileList];if(!selected.length){images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=[];imageOverrides={};setImageStatus(which,null);return}const status=$(`imageCount${which}`);status.textContent=t('imageLoading');const checked=await Promise.all(selected.map(async file=>{const url=URL.createObjectURL(file);try{await decodeImage(url);return{ok:true,item:{file,url,name:file.name}}}catch(e){URL.revokeObjectURL(url);return{ok:false,name:file.name}}}));const good=checked.filter(x=>x.ok).map(x=>x.item),bad=checked.filter(x=>!x.ok).map(x=>x.name);images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=good;for(const key of Object.keys(imageOverrides))if(key.startsWith(which+':'))delete imageOverrides[key];for(const [key,name] of Object.entries(projectImageLinks)){if(key.startsWith(which+':')){const item=good.find(x=>x.name===name);if(item)imageOverrides[key]=item}}setImageStatus(which,{good:good.map(x=>x.name),bad})}
+async function loadImages(which,fileList){if(!fileList)return;const selected=[...fileList];if(!selected.length){images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=[];imageOverrides={};setImageStatus(which,null);if(witnessView==='focus'&&groups.length)render();return}const status=$(`imageCount${which}`);status.textContent=t('imageLoading');const checked=await Promise.all(selected.map(async file=>{const url=URL.createObjectURL(file);try{await decodeImage(url);return{ok:true,item:{file,url,name:file.name}}}catch(e){URL.revokeObjectURL(url);return{ok:false,name:file.name}}}));const good=checked.filter(x=>x.ok).map(x=>x.item),bad=checked.filter(x=>!x.ok).map(x=>x.name);images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=good;for(const key of Object.keys(imageOverrides))if(key.startsWith(which+':'))delete imageOverrides[key];for(const [key,name] of Object.entries(projectImageLinks)){if(key.startsWith(which+':')){const item=good.find(x=>x.name===name);if(item)imageOverrides[key]=item}}setImageStatus(which,{good:good.map(x=>x.name),bad});if(witnessView==='focus'&&groups.length)render()}
 function groupItems(arr,g,side){const key=side==='A'?'aItems':'bItems';return Array.isArray(g[key])?g[key]:arr.slice(g[side==='A'?'a0':'b0'],g[side==='A'?'a1':'b1'])}
 function groupText(arr,g,side){return groupItems(arr,g,side).map(x=>x.text).filter(Boolean).join(' ')}
 // Identify a comparison unit by its readings and source lines so review choices
@@ -171,6 +177,45 @@ function wordDiff(a,b){
  return{aa,bb,diff}
 }
 function compareUnit(a,b){if(!a.trim()&&b.trim()){let t=b.split(/\s+/).filter(Boolean);return{aa:[],bb:t.map(t=>({t,c:'var',v:0})),diff:[{a:'∅',b}]}}if(a.trim()&&!b.trim()){let t=a.split(/\s+/).filter(Boolean);return{aa:t.map(t=>({t,c:'var',v:0})),bb:[],diff:[{a,b:'∅'}]}}return wordDiff(a,b)}
+function renderAlignmentProgress(){
+ const stages=[...alignmentJobs].flat();
+ if(!stages.length)return;
+ const total=stages.length*ALIGNMENT_STAGES,done=stages.reduce((sum,n)=>sum+n,0);
+ const percent=Math.floor(done*100/total);
+ const fill=$('alignmentFill');
+ if(fill.style)fill.style.width=`${percent}%`;
+ $('alignmentProgress').setAttribute?.('aria-valuenow',String(percent));
+ $('alignmentPercent').textContent=`${percent}%`;
+ const running=[...new Set(stages.filter(n=>n<ALIGNMENT_STAGES))];
+ $('alignmentStage').textContent=running.map(n=>t(`stage${n}`)).join(' · ');
+ $('alignmentRemaining').textContent=t('alignmentSteps',{done,total,left:total-done});
+}
+async function requestAlignment(payload,update){
+ const response=await fetch('/api/align',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(payload)});
+ if(!response.headers?.get('content-type')?.includes('application/x-ndjson')){
+  const data=await response.json();
+  if(!response.ok)throw Error(data.error||'Backend error');
+  update(ALIGNMENT_STAGES);
+  return data;
+ }
+ const reader=response.body.pipeThrough(new TextDecoderStream()).getReader();
+ let buffer='';
+ try{
+  while(true){
+   const {value,done}=await reader.read();
+   if(done)throw Error(t('alignmentFailed'));
+   buffer+=value;
+   let newline;
+   while((newline=buffer.indexOf('\n'))!==-1){
+    const event=JSON.parse(buffer.slice(0,newline));
+    buffer=buffer.slice(newline+1);
+    if(event.error)throw Error(event.error);
+    if(event.result){update(ALIGNMENT_STAGES);return event.result}
+    if(Number.isInteger(event.completed)&&event.completed>0&&event.completed<ALIGNMENT_STAGES)update(event.completed);
+   }
+  }
+ }finally{await reader.cancel()}
+}
 async function runAlign(useEdited=false,onlyWitnesses=null){
  // File imports scope the calculation to that witness. Only an explicit full
  // realignment (or a changed reference) rebuilds every comparison.
@@ -182,14 +227,32 @@ async function runAlign(useEdited=false,onlyWitnesses=null){
  if(!useEdited&&targets.some(id=>pairResults[id])&&!confirm(t(incremental?'replaceWitnessWarning':'rerunWarning'))){$('loadedStatus').textContent=t('alignmentCancelled');return false;}
  const button=$('alignBtn');button.disabled=true;
  alignmentsInProgress++;
+ const progress=targets.map(()=>0);
+ alignmentJobs.add(progress);
+ const update=(index,completed)=>{progress[index]=completed;renderAlignmentProgress()};
+ renderAlignmentProgress();
  $('alignmentActivity').hidden=false;
  $('alignmentToast').hidden=true;
  $('alignmentToastMessage').textContent='';
  $('loadedStatus').textContent='';
  $('alignSummary').textContent='';
  try{
-  if(useEdited){const response=await fetch('/api/align',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sentences:{A,B},names:{A:names.A,B:names[activeWitness]}})});const data=await response.json();if(!response.ok)throw Error(data.error||'Backend error');pairResults[activeWitness]={A:data.witnesses.A,B:data.witnesses.B,alignments:data.alignments,possible_transpositions:data.possible_transpositions||[],frequent_ambiguous_cases:data.frequent_ambiguous_cases||[],alignment_method:data.alignment_method,semantic_fallback:data.semantic_fallback};pairReviews[activeWitness]={decisions:{},movementDecisions:{}};editedMode=false}
-  else {const results=await Promise.all(targets.map(async id=>{const response=await fetch('/api/align',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alto:{A:rawByWitness.A,B:rawByWitness[id]},names:{A:names.A,B:names[id]}})});const data=await response.json();if(!response.ok)throw Error(`${names[id]}: ${data.error||'Backend error'}`);return[id,data]}));const nextResults=incremental?{...pairResults}:{},nextReviews=incremental?{...pairReviews}:{};if(incremental&&pairResults[activeWitness])nextReviews[activeWitness]={decisions,movementDecisions};for(const [id,data] of results){nextResults[id]={A:data.witnesses.A,B:data.witnesses.B,alignments:data.alignments,possible_transpositions:data.possible_transpositions||[],frequent_ambiguous_cases:data.frequent_ambiguous_cases||[],alignment_method:data.alignment_method,semantic_fallback:data.semantic_fallback};nextReviews[id]={decisions:{},movementDecisions:{}}}pairResults=nextResults;pairReviews=nextReviews;}
+  if(useEdited){
+   const id=targets[0],data=await requestAlignment({sentences:{A,B},names:{A:names.A,B:names[id]}},n=>update(0,n));
+   pairResults[id]={A:data.witnesses.A,B:data.witnesses.B,alignments:data.alignments,possible_transpositions:data.possible_transpositions||[],frequent_ambiguous_cases:data.frequent_ambiguous_cases||[],alignment_method:data.alignment_method,semantic_fallback:data.semantic_fallback};
+   pairReviews[id]={decisions:{},movementDecisions:{}};
+   editedMode=false;
+  }else{
+   const settled=await Promise.allSettled(targets.map(async(id,index)=>{
+    try{
+     const data=await requestAlignment({alto:{A:rawByWitness.A,B:rawByWitness[id]},names:{A:names.A,B:names[id]}},n=>update(index,n));
+     return [id,data];
+    }catch(error){throw Error(`${names[id]}: ${error.message}`)}
+   }));
+   const failure=settled.find(result=>result.status==='rejected');
+   if(failure)throw failure.reason;
+   const results=settled.map(result=>result.value);
+   const nextResults=incremental?{...pairResults}:{},nextReviews=incremental?{...pairReviews}:{};if(incremental&&pairResults[activeWitness])nextReviews[activeWitness]={decisions,movementDecisions};for(const [id,data] of results){nextResults[id]={A:data.witnesses.A,B:data.witnesses.B,alignments:data.alignments,possible_transpositions:data.possible_transpositions||[],frequent_ambiguous_cases:data.frequent_ambiguous_cases||[],alignment_method:data.alignment_method,semantic_fallback:data.semantic_fallback};nextReviews[id]={decisions:{},movementDecisions:{}}}pairResults=nextResults;pairReviews=nextReviews;}
   const selected=pairResults[activeWitness]?activeWitness:Object.keys(pairResults)[0];activatePair(selected,false);renderComparisonControl();$('loadedStatus').textContent=`${Object.keys(pairResults).length} ${language==='fr'?'comparaisons calculées':language==='it'?'confronti calcolati':'witness comparisons aligned'} · ${t('backendUnits',{a:A.length,b:B.length,w:names[activeWitness]||''})} · ${t(alignmentMethod)}`;$('alignSummary').textContent=t('alignmentSummary',{n:groups.length});render();renderMovements();
   if(alignmentsInProgress===1){
    $('alignmentToast').hidden=false;
@@ -199,17 +262,18 @@ async function runAlign(useEdited=false,onlyWitnesses=null){
  }catch(e){$('loadedStatus').textContent=t('error')+e.message;$('alignSummary').textContent=t('alignmentFailed');const err=$('editError');if(err)err.textContent=e.message;return false}
  finally{
   alignmentsInProgress--;
+  if(!alignmentsInProgress)alignmentJobs.clear();
   button.disabled=alignmentsInProgress>0;
   $('alignmentActivity').hidden=!alignmentsInProgress;
  }
 }
 function refs(arr){if(!arr.length)return '—';return arr.flatMap(x=>x.refs||[]).map(r=>`${r.alto_file||''} · ${r.page} · ${r.line}`).join(' / ')}
-function renderText(tokens,unit){return tokens.map(token=>{if(token.c==='same')return `<span>${esc(token.t)}</span>`;let status=decisions[unit]?.[token.v]||'';let cls=status==='keep'?'keep':status==='ignore'?'ignore':'var';return `<span class="token ${cls}" title="${t('difference',{n:token.v+1})}">${esc(token.t)}</span>`}).join(' ')}
+function renderText(tokens,unit,review=decisions){return tokens.map(token=>{if(token.c==='same')return `<span>${esc(token.t)}</span>`;let status=review[unit]?.[token.v]||'';let cls=status==='keep'?'keep':status==='ignore'?'ignore':'var';return `<span class="token ${cls}" title="${t('difference',{n:token.v+1})}">${esc(token.t)}</span>`}).join(' ')}
 
 function renderWitnessInputs(){const savedIIIF=Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||'']));const container=$('additionalWitnesses'),imageRows=$('additionalImageRows'),iiifRows=$('additionalIIIFRows');if(!container)return;container.innerHTML='';if(imageRows)imageRows.innerHTML='';if(iiifRows)iiifRows.innerHTML='';witnessIds.slice(1).forEach((id,index)=>{const number=index+1,label=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+number,imageLabel=(language==='fr'?'Images ':language==='it'?'Immagini ':'Images ')+number,iiifLabel=(language==='fr'?'URI IIIF ':language==='it'?'URI IIIF ':'IIIF URI ')+number;container.insertAdjacentHTML('beforeend',`<div class="witness-import-row"><div class="file-row"><label for="file${id}">${label}</label><input id="file${id}" type="file" multiple accept=".xml,.alto,text/xml" aria-label="${label} ALTO files"></div><div class="file-row"><label class="witness-name-label" for="dossierName${id}">${t('witnessName')}</label><input id="dossierName${id}" class="form-control" type="text" placeholder="e.g. BNCF II.IV.232" value="${esc(names[id]||'')}"></div></div>`);if(imageRows)imageRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="images${id}">${imageLabel}</label><input id="images${id}" type="file" multiple accept="image/*" aria-label="${imageLabel}"><span class="status-note" id="imageCount${id}">${t('none')}</span></div>`);if(iiifRows)iiifRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="iiif${id}">${iiifLabel}</label><input class="form-control" id="iiif${id}" type="url" placeholder="${t('optionalFallback')}"></div>`);if($(`iiif${id}`))$(`iiif${id}`).value=savedIIIF[id]||'';const fileInput=$(`file${id}`),nameInput=$(`dossierName${id}`),imageInput=$(`images${id}`);if(fileInput)fileInput.onchange=e=>loadFile(id,e.target.files);if(nameInput)nameInput.onchange=e=>{e.target.dataset.userEdited='true';names[id]=e.target.value.trim()||names[id];if(groups.length){render();renderMovements()}};if(imageInput)imageInput.onchange=e=>loadImages(id,e.target.files);images[id]=images[id]||[];imageStatus[id]=imageStatus[id]||null;if(imageStatus[id])setImageStatus(id,imageStatus[id])});const lab=$('dossierNameA');if(lab&&rawByWitness.A?.length)lab.value=names.A||'';const add=$('addWitnessBtn');if(add){add.disabled=witnessIds.length>=10;add.title=add.disabled?t('witnessLimit'):''}const count=$('witnessLimit');if(count)count.textContent=add?.disabled?t('witnessLimit'):t('witnessCount',{n:witnessIds.length});}
 
 function addWitness(){if(witnessIds.length>=10)return;const id=String.fromCharCode(65+witnessIds.length);witnessIds.push(id);rawByWitness[id]=[];names[id]=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+(witnessIds.length-1);images[id]=[];imageStatus[id]=null;renderWitnessInputs();renderComparisonControl()}
-function renderComparisonControl(){const control=$('comparisonControl'),select=$('compareWitness');if(!control||!select)return;const ids=Object.keys(pairResults);control.hidden=!ids.length;if(!ids.length)return;select.innerHTML=ids.map(id=>`<option value="${id}">${esc(names[id])}</option>`).join('');select.value=pairResults[activeWitness]?activeWitness:ids[0];select.onchange=()=>activatePair(select.value)}
+function renderComparisonControl(){const control=$('comparisonControl'),select=$('compareWitness');if(!control||!select)return;const ids=Object.keys(pairResults);control.hidden=!ids.length||witnessView!=='pair';if(!ids.length)return;select.innerHTML=ids.map(id=>`<option value="${id}">${esc(names[id])}</option>`).join('');select.value=pairResults[activeWitness]?activeWitness:ids[0];select.onchange=()=>activatePair(select.value)}
 function activatePair(id,saveCurrent=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid: automatic')?'alignAutomaticHybrid':p.alignment_method.startsWith('hybrid:')?'alignHybrid':p.alignment_method.includes('bertalign +')?'alignBert':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){render();renderMovements();$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
 function renderAutomaticSemanticStatus(){
  const el=$('automaticSemanticStatus');if(!el)return;
@@ -222,6 +286,8 @@ function renderAutomaticSemanticStatus(){
 function render(){
  renderAutomaticSemanticStatus();
  renderGenreEditor();
+ $('witnessViews').hidden=!groups.length;
+ if(witnessView!=='pair'&&groups.length){renderWitnessComparison();return}
  if(!groups.length){$('results').innerHTML=`<div class="empty">${t('noAlignment')}</div>`;return}
  let html='',total=0,kept=0,pending=0,shown=0;
  groups.forEach((g,idx)=>{
@@ -242,6 +308,149 @@ function render(){
  $('pendingBadge').textContent=t('pending',{n:pending,total});
  $('keptBadge').textContent=t('retained',{n:kept});
 }
+function witnessRows(){
+ const ids=Object.keys(pairResults),reference=pairResults[ids[0]].A;
+ const sourceIndex=new Map();
+ reference.forEach((unit,index)=>{
+  for(const ref of unit.refs||[]){
+   const key=VariansExport.sourceLineKey(ref);
+   if(key&&!sourceIndex.has(key))sourceIndex.set(key,index);
+  }
+ });
+ const parent=reference.map((_,index)=>index);
+ function root(index){
+  while(parent[index]!==index){
+   parent[index]=parent[parent[index]];
+   index=parent[index];
+  }
+  return index;
+ }
+ const entries=[],insertions=[];
+ for(const id of ids){
+  const pair=pairResults[id];
+  let anchor=reference.length;
+  for(let index=pair.alignments.length-1;index>=0;index--){
+   const group=pair.alignments[index],left=groupItems(pair.A,group,'A'),right=groupItems(pair.B,group,'B');
+   if(!left.length&&!right.length)continue;
+   const mapped=left.flatMap(item=>item.refs||[]).map(ref=>sourceIndex.get(VariansExport.sourceLineKey(ref))).filter(i=>i!==undefined);
+   if(!mapped.length&&left.length){
+    for(let i=group.a0;i<Math.min(group.a1,reference.length);i++)mapped.push(i);
+   }
+   const entry={id,index,left,right,group};
+   if(mapped.length){
+    anchor=Math.min(...mapped);
+    const end=Math.max(...mapped);
+    for(let i=anchor+1;i<=end;i++)parent[root(i)]=root(anchor);
+    entries.push({...entry,anchor});
+   }else{
+    insertions.push({anchor,entries:[entry],reference:[]});
+   }
+  }
+ }
+ const rows=new Map();
+ reference.forEach((unit,index)=>{
+  const key=root(index);
+  if(!rows.has(key))rows.set(key,{anchor:key,entries:[],reference:[]});
+  rows.get(key).reference.push(unit);
+ });
+ for(const entry of entries)rows.get(root(entry.anchor)).entries.push(entry);
+ const order=(a,b)=>a.id.localeCompare(b.id)||a.index-b.index;
+ for(const row of rows.values())row.entries.sort(order);
+ return [...rows.values(),...insertions].sort((a,b)=>a.anchor-b.anchor||
+  Number(!!a.reference.length)-Number(!!b.reference.length)||
+  (a.entries.length&&b.entries.length?order(a.entries[0],b.entries[0]):0));
+}
+function witnessEntryReview(entry){
+ const {id,index,left,right,group}=entry,review=currentReview(id).decisions;
+ const read=items=>items.map(item=>item.text).filter(Boolean).join(' ');
+ const diff=compareUnit(read(left),read(right));
+ return {...entry,review,diff,pending:diff.diff.filter((_,k)=>!review[index]?.[k]).length,
+  kept:diff.diff.filter((_,k)=>review[index]?.[k]==='keep').length,
+  uncertain:!!(group.semantic_review||(left.length&&right.length&&group.similarity<.45))};
+}
+function witnessReading(entry,showReference){
+ const {id,index,left,right,review,diff}=entry,state=review[index]||{};
+ const action=(method,label,classes)=>`<button type="button" class="btn ${classes}" onclick="reviewWitnessAction('${id}',${index},'${method}')">${t(label)}</button>`;
+ return `<section class="multi-reading"><strong>${esc(names[id])}</strong>
+ ${showReference&&left.length?`<details><summary>${t('pairReference')}</summary><div class="textline">${renderText(diff.aa,index,review)}</div></details>`:''}
+ <div class="textline">${right.length?renderText(diff.bb,index,review):`<em>${t('noPassage')}</em>`}<div class="status-note">${esc(refs(right))}</div></div>
+ ${diff.diff.length?`<div class="controls">${diff.diff.map((variant,k)=>`<span class="variant-item"><b>${esc(variant.a)} → ${esc(variant.b)}</b>
+ <button type="button" class="btn btn-light keepmini ${state[k]==='keep'?'chosen':''}" onclick="reviewWitnessAction('${id}',${index},'keep',${k})">${t('keep')}</button>
+ <button type="button" class="btn btn-light ignoremini ${state[k]==='ignore'?'chosen':''}" onclick="reviewWitnessAction('${id}',${index},'ignore',${k})">${t('ignore')}</button></span>`).join('')}</div>`:''}
+ <div class="controls">${action('edit','editText','btn-blue')} ${action('adjust','adjustAlignment','btn-outline')}</div></section>`;
+}
+function reviewWitnessAction(id,index,action,variant){
+ if(id!==activeWitness)activatePair(id);
+ if(action==='edit')editUnit(index,witnessView==='focus');
+ else if(action==='adjust')adjustUnit(index);
+ else setVariant(index,variant,action);
+}
+function distinctLineRefs(items){
+ return [...new Map(items.flatMap(item=>item.refs||[])
+  .map(ref=>[VariansExport.sourceLineKey(ref),ref]).filter(([key])=>key)).values()];
+}
+async function renderFocusImages(target,row){
+ const sources=[['A',row.reference],...Object.keys(pairResults).map(id=>[
+  id,row.entries.filter(entry=>entry.id===id).flatMap(entry=>entry.right)
+ ])];
+ const blocks=await Promise.all(sources.map(async([id,items])=>{
+  const lines=distinctLineRefs(items);
+  const cards=await Promise.all((lines.length?lines:[null]).map(ref=>sourceLineCard(id,ref,true)));
+  return cards.join('');
+ }));
+ if(target.isConnected)target.innerHTML=blocks.join('');
+}
+function renderWitnessComparison(){
+ const all=witnessRows().map((row,index)=>({...row,index,entries:row.entries.map(witnessEntryReview)}));
+ const entries=all.flatMap(row=>row.entries);
+ const visible=all.filter(row=>viewFilter==='all'||row.entries.some(entry=>
+  viewFilter==='variants'?entry.diff.diff.length:viewFilter==='pending'?entry.pending:entry.uncertain));
+ $('totalBadge').textContent=t('unitCount',{n:visible.length,total:all.length});
+ $('pendingBadge').textContent=t('pending',{n:entries.reduce((n,e)=>n+e.pending,0),total:entries.reduce((n,e)=>n+e.diff.diff.length,0)});
+ $('keptBadge').textContent=t('retained',{n:entries.reduce((n,e)=>n+e.kept,0)});
+ if(!visible.length){
+  $('results').innerHTML=`<div class="empty">${t('noFilterMatches')}</div>`;
+  return;
+ }
+ const text=row=>{
+  const referenceText=row.reference.map(unit=>unit.text).join(' ');
+  const ids=Object.keys(pairResults);
+  return `<div><section class="multi-reading"><strong>${esc(names.A)}</strong><div class="textline">${esc(referenceText)||'—'}<div class="status-note">${esc(refs(row.reference))}</div></div></section>
+  ${ids.map(id=>{
+   const readings=row.entries.filter(entry=>entry.id===id);
+   const pairText=readings.flatMap(entry=>entry.left).map(item=>item.text).join(' ');
+   return readings.length?readings.map(entry=>witnessReading(entry,pairText!==referenceText)).join(''):
+    `<section class="multi-reading"><strong>${esc(names[id])}</strong><div class="textline"><em>${t('noPassage')}</em></div></section>`;
+  }).join('')}</div>`;
+ };
+ if(witnessView==='all'){
+  $('results').innerHTML=visible.map(row=>`<article class="multi-row" id="witness-unit-${row.index}"><h3>${t('unitLabel',{n:row.index+1})}</h3>${text(row)}</article>`).join('');
+  return;
+ }
+ let position=visible.findIndex(row=>row.index>=focusRow);
+ if(position<0)position=visible.length-1;
+ const row=visible[position];
+ focusRow=row.index;
+ $('results').innerHTML=`<article class="multi-row" id="witness-unit-${row.index}">
+ <nav class="focus-nav"><button type="button" class="btn btn-outline" aria-label="${t('previousLine')}" ${position===0?'disabled':''} data-direction="previous" onclick="jumpWitnessRow(${visible[position-1]?.index??0},this.dataset.direction)">←</button>
+ <strong>${t('linePosition',{n:position+1,total:visible.length})}</strong>
+ <button type="button" class="btn btn-outline" aria-label="${t('nextLine')}" ${position===visible.length-1?'disabled':''} data-direction="next" onclick="jumpWitnessRow(${visible[position+1]?.index??0},this.dataset.direction)">→</button></nav>
+ <div class="focus-grid"><div><div id="focusEditor"></div>${text(row)}</div><aside class="focus-images"><h3>${t('facsimiles')}</h3><div id="focusImages">${t('loadingImages')}</div></aside></div></article>`;
+ renderFocusImages($('focusImages'),row);
+}
+function jumpWitnessRow(index,direction){
+ focusRow=index;
+ render();
+ if(direction){
+  const next=document.querySelector(`.focus-nav [data-direction="${direction}"]:not(:disabled)`);
+  (next||document.querySelector('.focus-nav button:not(:disabled)'))?.focus();
+ }
+}
+function setWitnessView(view,redraw=true){
+ witnessView=view;
+ document.querySelectorAll('[data-witness-view]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.witnessView===view)));
+ if(redraw){renderComparisonControl();render()}
+}
 function renderMovements(){const summary=$('movementSummary');if(!summary)return;summary.textContent=movementCandidates.length?t('movementCount',{n:movementCandidates.length}):t('movementNone');$('movementList').innerHTML=movementCandidates.map((c,i)=>{const status=movementDecisions[i]||'';return `<article class="verse-row" style="grid-template-columns:75px minmax(0,1fr) 200px"><div class="verse-num">${i+1}<span class="vbadge">${c.status==='ambiguous'?t('ambiguous'):t('possibleMove')}</span></div><div class="witnesses"><div class="witness-line"><div class="witness-label">${esc(names.A)}</div><div class="textline">${esc(c.text_a)}</div></div><div class="witness-line"><div class="witness-label">${esc(names[activeWitness])}</div><div class="textline">${esc(c.text_b)}</div></div><div class="status-note">score ${Number(c.score).toFixed(2)} · margin ${Number(c.margin).toFixed(2)} · ${esc(t(status==='confirm'?'confirmed':status==='reject'?'rejected':'ambiguous'))}</div></div><div class="row-actions"><button class="btn btn-outline" onclick="openMovementImages(${i})">${t('openSources')}</button><button class="btn btn-green" onclick="setMovement(${i},'confirm')">${t('confirmMove')}</button><button class="btn btn-danger" onclick="setMovement(${i},'reject')">${t('rejectMove')}</button></div></article>`}).join('');$('ambiguityList').innerHTML=ambiguousCases.length?ambiguousCases.map(x=>`<div class="variant-item">${esc(x.text_a)} ↔ ${esc(x.text_b)} · ${x.count}</div>`).join(''):t('movementNone')}function setMovement(i,decision){movementDecisions[i]=decision;renderMovements()}async function openMovementImages(i){const c=movementCandidates[i];await renderImageCompare(t('possibleMove')+' · '+(i+1),c.source_a||[],c.source_b||[])}
 function rowHTML(which,arr,tokens,idx){
  const id=which==='B'?activeWitness:which;
@@ -251,12 +460,22 @@ function rowHTML(which,arr,tokens,idx){
 }
 function setVariant(i,k,action){decisions[i]=decisions[i]||{};decisions[i][k]=action;render()}
 function setAll(i,action){let g=groups[i],d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B'));decisions[i]=decisions[i]||{};d.diff.forEach((_,k)=>decisions[i][k]=action);render()}
-function editUnit(i){let g=groups[i],a=groupText(A,g,'A'),b=groupText(B,g,'B');let modal=$('modal');modal.innerHTML=`<div class="iiif-modal"><div class="iiif-box" style="max-width:760px"><div class="iiif-head"><span>${t('editUnit',{n:i+1})}</span><button class="btn btn-outline" onclick="$('modal').innerHTML=''">${t('close')}</button></div><p class="status-note">${t('editHint')}</p><label>${esc(names.A)}<textarea id="editA" class="form-control" style="width:100%;min-height:80px;margin:5px 0 12px">${esc(a)}</textarea></label><label>${esc(names[activeWitness])}<textarea id="editB" class="form-control" style="width:100%;min-height:80px;margin:5px 0 12px">${esc(b)}</textarea></label><div id="editError" class="status-note" role="alert"></div><button id="saveEditBtn" class="btn btn-green" onclick="saveEdit(${i})">${t('saveRecalc')}</button></div></div>`}
+function closeTextEditor(){
+ const editor=$('focusEditor');
+ if(editor?.firstElementChild)editor.innerHTML='';
+ else $('modal').innerHTML='';
+}
+function editUnit(i,inline=false){
+ const g=groups[i],a=groupText(A,g,'A'),b=groupText(B,g,'B');
+ const fields=`<div class="iiif-head"><span>${t('editUnit',{n:i+1})}</span><button class="btn btn-outline" onclick="closeTextEditor()">${t('close')}</button></div><p class="status-note">${t('editHint')}</p><label>${esc(names.A)}<textarea id="editA" class="form-control" rows="3">${esc(a)}</textarea></label><label>${esc(names[activeWitness])}<textarea id="editB" class="form-control" rows="3">${esc(b)}</textarea></label><div id="editError" class="status-note" role="alert"></div><button id="saveEditBtn" class="btn btn-green" onclick="saveEdit(${i})">${t('saveRecalc')}</button>`;
+ if(inline)$('focusEditor').innerHTML=`<section class="text-editor">${fields}</section>`;
+ else $('modal').innerHTML=`<div class="iiif-modal"><div class="iiif-box text-editor" style="max-width:760px">${fields}</div></div>`;
+}
 async function saveEdit(i){
  const g=groups[i],aa=$('editA').value.trim(),bb=$('editB').value.trim();
  if(!aa&&!bb){$('editError').textContent=t('editBothEmpty');return}
  const previousA=groupText(A,g,'A'),previousB=groupText(B,g,'B');
- if(aa===previousA&&bb===previousB){$('modal').innerHTML='';return}
+ if(aa===previousA&&bb===previousB){closeTextEditor();return}
  if(Object.keys(decisions[i]||{}).length&&!confirm(t('editResetWarning')))return;
  // Word-difference indices can change in the edited unit. Invalidate its
  // decisions only; other units and witness comparisons retain their reviews.
@@ -267,7 +486,7 @@ async function saveEdit(i){
  pairResults[activeWitness].alignments=groups;
  decisions={...decisions};delete decisions[i];
  pairReviews[activeWitness]={decisions,movementDecisions};
- render();$('modal').innerHTML='';$('loadedStatus').textContent+=' · '+t('manualSaved');
+ closeTextEditor();render();$('loadedStatus').textContent+=' · '+t('manualSaved');
 }
 function cloneLineItem(item){return {...item,refs:(item.refs||[]).map(ref=>({...ref}))}}
 function draftItems(g,side){return g[side==='A'?'aItems':'bItems']||[]}
@@ -282,10 +501,11 @@ function splitDraftLine(){const selected=$('moveSource').value,marker=$('splitMa
 function moveDraftLine(){const selected=$('moveSource').value,target=Number($('moveTarget').value),positionValue=$('movePosition').value;if(!selected||!Number.isInteger(target)){ $('alignmentEditError').textContent=t('selectLineAndTarget');return}const side=alignmentDraft.sourceSide,[from,at]=selected.split(':').map(Number),items=draftItems(alignmentDraft.groups[from],side),[item]=items.splice(at,1);if(!item){$('alignmentEditError').textContent=t('selectLineAndTarget');return}const destination=draftItems(alignmentDraft.groups[target],side);let position=positionValue==='start'?0:positionValue==='end'?destination.length:Number(positionValue.split(':')[1])+1;if(from===target&&at<position)position--;destination.splice(Math.max(0,Math.min(position,destination.length)),0,item);alignmentDraft.index=target;$('alignmentEditError').textContent='';renderAdjustUnit()}
 function saveAdjustedUnit(){const previousGroups=groups,previousDecisions=decisions,next=alignmentDraft.groups.map((g,i)=>{const left=groupText(A,g,'A'),right=groupText(B,g,'B');return {...g,id:i,similarity:left&&right?similarityClient(left,right):0}}),nextDecisions=preserveDecisionsByKey(previousGroups,next,previousDecisions);groups=next;pairResults[activeWitness].alignments=next;alignmentDraft=null;decisions=nextDecisions;pairReviews[activeWitness]={decisions,movementDecisions};render();renderMovements();$('loadedStatus').textContent+=' · '+t('manualSaved');$('modal').innerHTML=''}
 function similarityClient(a,b){const x=tokenKey(a).split('').join(' '),y=tokenKey(b).split('').join(' ');if(!x&&!y)return 1;if(!x||!y)return 0;let prev=Array.from({length:y.length+1},(_,i)=>i);for(let i=1;i<=x.length;i++){const cur=[i];for(let j=1;j<=y.length;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(x[i-1]===y[j-1]?0:1));prev=cur}return Math.max(0,1-prev[y.length]/Math.max(x.length,y.length))}
-function resolveImage(which,ref){if(!ref)return null;const id=which==='B'?activeWitness:which,key=`${id}:${ref.alto_file||ref.page}`;if(imageOverrides[key])return imageOverrides[key];const stem=s=>String(s||'').split('/').pop().replace(/\.[^.]+$/,'').toLowerCase();const wanted=[stem(ref.image_file),stem(ref.alto_file),stem(ref.page)].filter(Boolean);let match=images[id].find(x=>wanted.some(w=>stem(x.name)===w||stem(x.name).includes(w)||w.includes(stem(x.name))));if(!match&&images[id].length===1)match=images[id][0];if(!match){const uri=$(`iiif${id}`).value.trim();if(uri)return {name:t('imageFallback'),url:uri}}return match||null}
+function resolveImage(which,ref){return resolveWitnessImage(which==='B'?activeWitness:which,ref)}
+function resolveWitnessImage(id,ref){if(!ref)return null;const key=`${id}:${ref.alto_file||ref.page}`;if(imageOverrides[key])return imageOverrides[key];const stem=s=>String(s||'').split('/').pop().replace(/\.[^.]+$/,'').toLowerCase();const wanted=[stem(ref.image_file),stem(ref.alto_file),stem(ref.page)].filter(Boolean);let match=images[id].find(x=>wanted.some(w=>stem(x.name)===w||stem(x.name).includes(w)||w.includes(stem(x.name))));if(!match&&images[id].length===1)match=images[id][0];if(!match){const uri=$(`iiif${id}`).value.trim();if(uri)return {name:t('imageFallback'),url:uri}}return match||null}
 function chooseImage(which,ref){if(!ref)return null;const id=which==='B'?activeWitness:which;let found=resolveImage(which,ref);if(found)return found;if(!images[id].length)return null;let list=images[id].map((x,i)=>`${i+1}. ${x.name}`).join('\n');let n=Number(prompt(t('chooseImage',{page:ref?.page||'',w:names[id],list})));if(Number.isInteger(n)&&n>0&&n<=images[id].length){let item=images[id][n-1];imageOverrides[`${id}:${ref?.alto_file||ref?.page}`]=item;projectImageLinks[`${id}:${ref?.alto_file||ref?.page}`]=item.name;return item}return null}
 async function cropLine(imageUrl,ref){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{try{const vals=String(ref.coords||'').split(',').map(Number);if(vals.length<4||vals.some(v=>!Number.isFinite(v))){resolve(null);return}let[x,y,w,h]=vals;const pw=Number(ref.page_width)||image.naturalWidth,ph=Number(ref.page_height)||image.naturalHeight,sx=image.naturalWidth/pw,sy=image.naturalHeight/ph;let left=x*sx,top=y*sy,width=w*sx,height=h*sy,padX=Math.max(12,height*.18),padY=Math.max(8,height*.24);left=Math.max(0,left-padX);top=Math.max(0,top-padY);width=Math.min(image.naturalWidth-left,width+padX*2);height=Math.min(image.naturalHeight-top,height+padY*2);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));canvas.getContext('2d').drawImage(image,left,top,width,height,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/png'))}catch(e){reject(e)}};image.onerror=()=>reject(Error('Immagine non leggibile'));image.src=imageUrl})}
-async function sourceLineCard(which,ref){const id=which==='B'?activeWitness:which,item=chooseImage(which,ref);let crop=null;if(item&&ref)try{crop=await cropLine(item.url,ref)}catch(e){}const text=ref?.line_text||t('notAvailable');return `<figure class="source-line-card"><figcaption><b>${esc(names[id])}</b><span>${esc(ref?`${ref.alto_file||''} · ${t('page')} ${ref.page} · ${t('line')} ${ref.line}`:'')}</span></figcaption>${crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref?.page||'')}">`:`<div class="no-image">${t('missingImage')}</div>`}${item?`<details class="full-page-details"><summary>${t('fullPage')}</summary><img class="full-page" src="${esc(item.url)}" alt="${t('fullPage')} ${esc(ref?.page||'')}"></details>`:''}<div class="image-reading">${esc(text)}</div></figure>`}
+async function sourceLineCard(which,ref,automatic=false){const id=automatic?which:which==='B'?activeWitness:which,item=automatic?resolveWitnessImage(id,ref):chooseImage(which,ref);let crop=null;if(item&&ref)try{crop=await cropLine(item.url,ref)}catch(e){}const text=ref?.line_text||t('notAvailable');return `<figure class="source-line-card"><figcaption><b>${esc(names[id])}</b><span>${esc(ref?`${ref.alto_file||''} · ${t('page')} ${ref.page} · ${t('line')} ${ref.line}`:'')}</span></figcaption>${crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref?.page||'')}">`:`<div class="no-image">${t('missingImage')}</div>`}${item?`<details class="full-page-details"><summary>${t('fullPage')}</summary><img class="full-page" src="${esc(item.url)}" alt="${t('fullPage')} ${esc(ref?.page||'')}"></details>`:''}<div class="image-reading">${esc(text)}</div></figure>`}
 async function openImages(unitIndex){const g=groups[unitIndex],ra=groupItems(A,g,'A').flatMap(x=>x.refs||[]),rb=groupItems(B,g,'B').flatMap(x=>x.refs||[]);await renderImageCompare(t('lineCompare',{n:unitIndex+1}),ra,rb)}async function renderImageCompare(title,ra,rb){const modal=$('modal');modal.innerHTML=`<div class="iiif-modal"><div class="iiif-box image-compare"><div class="iiif-head"><span>${esc(title)}</span><button class="btn btn-outline" onclick="$('modal').innerHTML=''">${t('close')}</button></div><div class="line-compare"><section class="line-witness"><h3>${esc(names.A)} <small>${t('rows',{n:ra.length})}</small></h3><div id="lineA"></div></section><section class="line-witness"><h3>${esc(names[activeWitness])} <small>${t('rows',{n:rb.length})}</small></h3><div id="lineB"></div></section></div><p class="crop-note">${t('cropNote')}</p></div></div>`;const [cardsA,cardsB]=await Promise.all([Promise.all(ra.map(r=>sourceLineCard('A',r))),Promise.all(rb.map(r=>sourceLineCard('B',r)))]);if(!document.getElementById('lineA'))return;$('lineA').innerHTML=cardsA.join('')||`<div class="no-image">${t('noPassageIn',{w:'A'})}</div>`;$('lineB').innerHTML=cardsB.join('')||`<div class="no-image">${t('noPassageIn',{w:'B'})}</div>`}
 function currentReview(id){return id===activeWitness?{decisions,movementDecisions}:pairReviews[id]||{decisions:{},movementDecisions:{}}}
 function selectedVariantEdits(id){const pair=pairResults[id];if(!pair)return[];const state=currentReview(id).decisions||{},out=[];let offset=0;for(let gi=0;gi<pair.alignments.length;gi++){const g=pair.alignments[gi],left=groupText(pair.A,g,'A'),right=groupText(pair.B,g,'B'),d=compareUnit(left,right),selected=new Set(Object.entries(state[gi]||{}).filter(([,v])=>v==='keep').map(([k])=>Number(k)));for(const k of selected){const aPos=[];d.aa.forEach((x,pos)=>{if(x.c==='var'&&x.v===k)aPos.push(pos)});const bTokens=d.bb.filter(x=>x.c==='var'&&x.v===k).map(x=>x.t);let start=aPos.length?aPos[0]:d.aa.findIndex(x=>x.c==='var'&&x.v>k);if(start<0)start=d.aa.length;const end=aPos.length?aPos[aPos.length-1]+1:start;out.push({id,a0:offset+start,a1:offset+end,tokens:bTokens,group:gi,variant:k})}offset+=left.split(/\s+/).filter(Boolean).length}return out}
@@ -379,8 +599,27 @@ function buildJSONExport(){
 }
 function exportJSON(){try{download(t('jsonName'),JSON.stringify(buildJSONExport(),null,2),'application/json')}catch(error){alert(exportError(error))}}
 function download(name,content,type){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-function goToUnit(index){if(!$(`unit-${index}`)){ $('resultFilter').value='all';viewFilter='all';render()}const row=$(`unit-${index}`);if(row){row.scrollIntoView({behavior:'smooth',block:'center'});row.classList.add('focus-review');setTimeout(()=>row.classList.remove('focus-review'),1600)}}
-function nextPending(){let index=groups.findIndex((g,i)=>{const d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B')).diff;return d.some((_,k)=>!decisions[i]?.[k])});if(index<0){alert(t('noPendingLeft'));return}viewFilter='pending';$('resultFilter').value='pending';render();goToUnit(index)}
+function goToUnit(index){
+ if(witnessView!=='pair'){
+  const position=witnessRows().findIndex(row=>row.entries.some(entry=>entry.id===activeWitness&&entry.index===index));
+  if(position<0)return;
+  if(viewFilter!=='all'){$('resultFilter').value='all';viewFilter='all'}
+  focusRow=position;
+  render();
+  $(`witness-unit-${position}`)?.scrollIntoView({block:'center'});
+  return;
+ }
+if(!$(`unit-${index}`)){ $('resultFilter').value='all';viewFilter='all';render()}const row=$(`unit-${index}`);if(row){row.scrollIntoView({behavior:'smooth',block:'center'});row.classList.add('focus-review');setTimeout(()=>row.classList.remove('focus-review'),1600)}}
+function nextPending(){
+ if(witnessView!=='pair'){
+  const pending=witnessRows().map((row,index)=>({row,index})).filter(({row})=>row.entries.some(entry=>witnessEntryReview(entry).pending));
+  if(!pending.length){alert(t('noPendingLeft'));return}
+  const next=pending.find(item=>item.index>focusRow)||pending[0];
+  viewFilter='pending';$('resultFilter').value=viewFilter;jumpWitnessRow(next.index);
+  $(`witness-unit-${next.index}`)?.scrollIntoView({block:'center'});
+  return;
+ }
+ let index=groups.findIndex((g,i)=>{const d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B')).diff;return d.some((_,k)=>!decisions[i]?.[k])});if(index<0){alert(t('noPendingLeft'));return}viewFilter='pending';$('resultFilter').value='pending';render();goToUnit(index)}
 function showRecurring(){let counts={};groups.forEach((g,i)=>compareUnit(groupText(A,g,'A'),groupText(B,g,'B')).diff.forEach(d=>{let key=`${d.a} → ${d.b}`;counts[key]=counts[key]||{count:0,units:[]};counts[key].count++;counts[key].units.push(i)}));let found=Object.entries(counts).filter(([,v])=>v.count>1);$('recurringText').innerHTML=found.length?found.map(([variant,v])=>`<button class="variant-link" onclick="goToUnit(${v.units[0]})">${esc(t('recurringItem',{variant,count:v.count}))}</button>`).join(''):t('noCorpusRepeat')}
 // Versioned portable sessions. Images remain external; blob URLs never persist.
 let projectImageLinks={},projectImageFiles={},pendingProjectOperations=0,projectOpening=false;
@@ -460,6 +699,7 @@ function restoreProject(s){
  alignmentDraft=null;alignmentMethod='';$('modal').innerHTML='';$('recurringText').textContent='';
  $('fileA').value='';$('imagesA').value='';$('dossierNameA').value=names.A;$('dossierNameA').dataset.userEdited='true';
  if($('teiExportDialog').open)$('teiExportDialog').close();teiExportDraft=null;
+ setWitnessView('pair',false);focusRow=0;
  genreRanges=s.genreRanges||[];uniformGenre=s.genre;titleLines=new Set(s.titleLines||[]);
  language=s.language;$('language').value=language;viewFilter=s.viewFilter;$('resultFilter').value=viewFilter;$('genre').value=s.genre;
  setLanguage(language);
@@ -511,6 +751,10 @@ $('titleLineOptions').onchange=event=>{
  $('teiExportError').textContent='';
 };
 $('dismissAlignmentToast').onclick=()=>{$('alignmentToast').hidden=true};
+$('witnessViews').onclick=event=>{
+ const view=event.target.dataset.witnessView;
+ if(view)setWitnessView(view);
+};
 const exportButton=$('exportButton'),exportOptions=$('exportOptions');
 function setExportMenu(open){
  exportOptions.hidden=!open;

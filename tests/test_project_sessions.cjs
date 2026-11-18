@@ -288,7 +288,7 @@ test('automatic fallback is surfaced without any semantic action and survives sa
  // Simulate the backend's accepted-recovery metadata; the policy and real
  // entrypoint with a controlled semantic provider are covered by Python tests.
  await page.route('**/api/align',async route=>{
-  requests++;const response=await route.fetch(),data=await response.json();
+  requests++;const response=await route.fetch({headers:{...route.request().headers(),accept:'application/json'}}),data=await response.json();
   data.alignment_method='hybrid: automatic Bertalign recovery + word-level Levenshtein';
   data.alignments[1].alignment_source='bertalign_automatic';data.alignments[1].semantic_review=true;
   data.semantic_fallback={strategy:'automatic',engine:'bertalign',status:'applied',candidates:1,attempted:1,accepted:1,windows:[{fromUnit:1,toUnit:3,status:'applied'}]};
@@ -310,7 +310,7 @@ test('automatic fallback failure keeps lexical output and displays the reason',a
  const good=await page.request.post(url+'/api/align',{data:{sentences:{A:[{text:'identical reliable reference text',refs:[]}],B:[{text:'identical reliable reference text',refs:[]}]}}});
  assert.equal(good.status(),200);assert.equal((await good.json()).semantic_fallback.status,'not_needed');
  await page.route('**/api/align',async route=>{
-  const response=await route.fetch(),data=await response.json();
+  const response=await route.fetch({headers:{...route.request().headers(),accept:'application/json'}}),data=await response.json();
   data.semantic_fallback={strategy:'automatic',engine:'bertalign',status:'not_installed',candidates:1,attempted:1,accepted:0,windows:[{fromUnit:1,toUnit:2,status:'not_installed'}]};
   await route.fulfill({json:data});
  });
@@ -397,7 +397,10 @@ test('alignment feedback and TEI titles work through the export menu',{timeout:2
   await page.route('**/api/align',async route=>{await paused;await route.continue()});
   await upload(page,'#fileB',['Titolo','Prima riga','Secondo titolo','Seconda riga']);
   try{
-   await page.getByRole('progressbar',{name:'Aligning witnesses…'}).waitFor();
+   const progress=page.getByRole('progressbar',{name:'Aligning witnesses…'});
+   await progress.waitFor();
+   assert.equal(await progress.getAttribute('aria-valuenow'),'0');
+   assert.match(await page.locator('#alignmentRemaining').innerText(),/4 remaining/);
    assert.equal(await page.locator('#alignmentToast').isVisible(),false);
   }finally{release()}
   await page.locator('#alignmentToast').waitFor();
@@ -426,5 +429,60 @@ test('alignment feedback and TEI titles work through the export menu',{timeout:2
   const json=JSON.parse(await download(page,'#exportJson'));
   assert.equal(json.structure.titleLines.length,2);
   assert.match(await download(page,'#exportTei'),/<head>Titolo<\/head>/);
+ }finally{await page.close()}
+});
+
+test('all witnesses and line-by-line share pair decisions and use each witness facsimile',async()=>{
+ const page=await browser.newPage();
+ try{
+  await page.goto(url);
+  await upload(page,'#fileA',['Prima riga di riferimento','Seconda riga di riferimento']);
+  await page.locator('#addWitnessBtn').click();
+  await upload(page,'#fileB',['Prima riga di confronto','Seconda riga di riferimento']);
+  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+  await page.locator('#addWitnessBtn').click();
+  await upload(page,'#fileC',['Prima riga di verifica','Seconda riga di riferimento']);
+  await page.waitForFunction(()=>Object.keys(pairResults).length===2&&pendingProjectOperations===0);
+  const image={name:'page.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6D2sAAAAASUVORK5CYII=','base64')};
+  for(const id of ['A','B','C'])await page.locator(`#images${id}`).setInputFiles(image);
+  await page.waitForFunction(()=>pendingProjectOperations===0);
+
+  await page.getByRole('button',{name:'All witnesses',exact:true}).click();
+  const first=page.locator('.multi-row').first();
+  assert.equal(await first.locator('.multi-reading').count(),3);
+  assert.match(await first.innerText(),/riferimento[\s\S]*confronto[\s\S]*verifica/);
+  await first.locator('.multi-reading').nth(2).getByRole('button',{name:'Keep',exact:true}).first().click();
+  assert.equal(await page.evaluate(()=>currentReview('C').decisions[0][0]),'keep');
+  assert.deepEqual(await page.evaluate(()=>currentReview('B').decisions),{});
+
+  await page.getByRole('button',{name:'Line by line',exact:true}).click();
+  assert.equal(await page.locator('.multi-row').count(),1);
+  await page.locator('#focusImages figure').nth(2).waitFor();
+  assert.equal(await page.locator('#focusImages img.line-crop').count(),3);
+  await page.getByRole('button',{name:'Next line',exact:true}).click();
+  assert.match(await page.locator('.focus-nav').innerText(),/Line 2 of 2/);
+  await page.getByRole('button',{name:'Previous line',exact:true}).click();
+  await page.locator('.multi-reading').nth(1).getByRole('button',{name:'Edit text',exact:true}).click();
+  assert.equal(await page.locator('#focusEditor #editB').count(),1);
+  assert.equal(await page.locator('#modal #editB').count(),0);
+  await page.locator('#focusImages img.line-crop').first().waitFor();
+  await page.locator('#editB').fill('Prima riga corretta');
+  await page.locator('#saveEditBtn').click();
+  assert.match(await page.locator('.multi-reading').nth(1).innerText(),/corretta/);
+  await page.getByRole('button',{name:'Pair',exact:true}).click();
+  assert.match(await page.locator('#unit-0').innerText(),/corretta/);
+ }finally{await page.close()}
+});
+
+test('alignment streams actual stages and preserves the JSON endpoint',async()=>{
+ const page=await browser.newPage();
+ try{
+  const data={sentences:{A:[{text:'testo di riferimento',refs:[]}],B:[{text:'testo di confronto',refs:[]}]}};
+  const headers={accept:'application/x-ndjson'};
+  const streamed=await page.request.post(url+'/api/align',{headers,data});
+  const events=(await streamed.text()).trim().split('\n').map(line=>JSON.parse(line));
+  assert.deepEqual(events.slice(0,-1),[{completed:1},{completed:2},{completed:3}]);
+  const json=await page.request.post(url+'/api/align',{data});
+  assert.deepEqual(events.at(-1).result,await json.json());
  }finally{await page.close()}
 });
