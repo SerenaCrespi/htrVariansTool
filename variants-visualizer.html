@@ -157,6 +157,47 @@ select { min-width: 0; max-width: 100%; font-weight: 400 }
 }
 .details b, .details strong { color: var(--forest-deep) }
 .details div + div { margin-top: 4px }
+.edition-layout {
+ display: grid;
+ grid-template-columns: minmax(0, 1fr) minmax(235px, 30%);
+ align-items: start;
+ gap: 12px;
+}
+.edition-layout:has(#stemma[hidden]) { display: block }
+#stemma {
+ border: 1px solid var(--line);
+ border-radius: 7px;
+ background: var(--paper);
+ padding: 14px;
+ box-shadow: 0 2px 7px #24382d14;
+}
+#stemma h2 { margin: 0; color: var(--forest-deep); font: 600 19px Georgia, serif }
+#stemma p { margin: 8px 0; font-size: 12px; color: var(--muted) }
+#stemma details { font-size: 12px }
+#stemma summary { cursor: pointer; color: var(--forest-deep) }
+#stemma-tree { padding-block: 4px 12px }
+.stemma-branches { list-style: none; margin: 0; padding: 0 0 0 .8rem }
+.stemma-branches > li { position: relative; border-left: 1px solid var(--gold); padding: 5px 0 0 .65rem }
+.stemma-branches > li::before {
+ content: "";
+ position: absolute;
+ left: 0;
+ top: 14px;
+ width: .5rem;
+ border-top: 1px solid var(--gold);
+}
+.stemma-branches > li:last-child { border-left-color: transparent }
+.stemma-branches > li:last-child::before {
+ left: -1px;
+ top: 0;
+ height: 14px;
+ border-top: 0;
+ border-left: 1px solid var(--gold);
+ border-bottom: 1px solid var(--gold);
+}
+.stemma-branches .btn { padding: 4px 7px; text-align: left; overflow-wrap: anywhere }
+.stemma-branches .btn[aria-pressed="true"] { background: var(--gold-pale) }
+@media (max-width: 760px) { .edition-layout { grid-template-columns: minmax(0, 1fr) } }
 @media (max-width: 580px) {
  .masthead-inner { padding: 8px 13px }
  .brand { gap: 9px }
@@ -192,9 +233,23 @@ select { min-width: 0; max-width: 100%; font-weight: 400 }
 </div>
 <span class="counter" id="counter" role="status"></span>
 </div>
-<article id="content" aria-label="Edition" hidden></article>
-<aside id="details" class="details" aria-label="Variant readings" aria-live="polite" hidden></aside>
+<div class="edition-layout">
+ <div>
+  <article id="content" aria-label="Edition" hidden></article>
+  <aside id="details" class="details" aria-label="Variant readings" aria-live="polite" hidden></aside>
+ </div>
+ <aside id="stemma" aria-labelledby="stemma-title" hidden>
+  <h2 id="stemma-title">Exploratory stemma</h2>
+  <p id="stemma-summary"></p>
+  <div id="stemma-tree"></div>
+  <details>
+   <summary>How to read this tree</summary>
+   <p>Branches group witnesses with similar readings using average-linkage clustering. Branch lengths are schematic. The diagram does not infer ancestors, copying direction or dates.</p>
+   <p id="stemma-method"></p>
+  </details>
+ </aside>
+</div>
 </main>
-<script src="/variants-visualizer.js" defer></script>
+<script src="/variants-visualizer.js?v=stemma" defer></script>
 </body>
 </html>

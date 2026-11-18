@@ -806,7 +806,15 @@ test('the variants visualizer opens real TEI and JSON exports in a separate tab'
   await page.locator('#addWitnessBtn').click();
   await upload(page,'#fileB',['Prima strofa','Seconda riga']);
   await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
-  await page.getByRole('button',{name:'Keep',exact:true}).first().click();
+  await page.locator('#addWitnessBtn').click();
+  await upload(page,'#fileC',['Prima strofa','Seconda riga']);
+  await page.waitForFunction(()=>Object.keys(pairResults).length===2&&pendingProjectOperations===0);
+  await page.evaluate(()=>{
+   for(const id of ['B','C']){
+    activatePair(id);
+    setAll(0,'keep');
+   }
+  });
   const tei=await download(page,'#exportTei');
   const json=await download(page,'#exportJson');
   const [viewer]=await Promise.all([page.waitForEvent('popup'),page.locator('#openVisualizer').click()]);
@@ -814,6 +822,11 @@ test('the variants visualizer opens real TEI and JSON exports in a separate tab'
   await input.setInputFiles({name:'edition.xml',mimeType:'application/xml',buffer:Buffer.from(tei)});
   await viewer.getByText('TEI edition',{exact:true}).waitFor();
   assert.match(await viewer.locator('#content > p').innerText(),/Prima riga Seconda riga/);
+  assert.match(await viewer.locator('#stemma-summary').innerText(),/3 witnesses · 1 comparable apparatus entry/);
+  const branch=viewer.locator('#stemma-tree > ul > li > ul');
+  assert.equal(await branch.getByRole('button').count(),2);
+  await branch.getByRole('button').first().click();
+  assert.match(await viewer.locator('#content > p').innerText(),/Prima strofa Seconda riga/);
   await viewer.getByRole('button',{name:'Next variant'}).click();
   assert.match(await viewer.locator('#details').innerText(),/app-1[\s\S]*strofa/);
   await viewer.locator('#wit').selectOption({index:2});
@@ -824,6 +837,10 @@ test('the variants visualizer opens real TEI and JSON exports in a separate tab'
   await viewer.getByRole('button',{name:'Next variant'}).click();
   await input.setInputFiles({name:'edition.json',mimeType:'application/json',buffer:Buffer.from(json)});
   await viewer.getByText('JSON collation',{exact:false}).waitFor();
+  assert.match(await viewer.locator('#stemma-summary').innerText(),/3 witnesses · 1 comparable unit/);
+  assert.equal(await branch.getByRole('button').count(),2);
+  assert.deepEqual(await branch.getByRole('button').evaluateAll(buttons=>buttons.map(button=>button.dataset.witness)),
+   Object.keys(JSON.parse(json).witnesses));
   await viewer.getByRole('button',{name:'Next variant'}).click();
   assert.match(await viewer.locator('#details').innerText(),/Retained[\s\S]*riga → strofa/);
   await viewer.locator('#wit').selectOption({index:2});

@@ -129,6 +129,105 @@ function renderJSON(data) {
  return fragment;
 }
 
+function stemmaEvidence() {
+ const witnesses = [...edition.witnesses.keys()];
+ if (!edition.data) {
+  return loci.flatMap(locus => {
+   const attested = new Map();
+   for (const entry of locus.entries) {
+    for (const id of entry.witnesses) {
+     if (!attested.has(id)) attested.set(id, new Set());
+     attested.get(id).add(entry.text);
+    }
+   }
+   if (!witnesses.every(id => attested.get(id)?.size === 1)) return [];
+   return [witnesses.map(id => [...attested.get(id)][0])];
+  });
+ }
+ const {reference, units} = edition.data;
+ return units.flatMap(unit => {
+  const variants = unit.variants || [];
+  if (!variants.some(variant => variant.status === 'retained') ||
+      variants.some(variant => !['retained', 'dismissed'].includes(variant.status))) return [];
+  if (!witnesses.every(id => id === reference.id ||
+      (Object.hasOwn(unit.readings || {}, id) && ['aligned', 'omission', 'addition'].includes(unit.readings[id]?.status) &&
+       unit.readings[id].segments?.every(segment => segment.status !== 'unaligned')))) return [];
+  return [witnesses.map(id => JSON.stringify(variants
+   .filter(variant => variant.witness === id && variant.status === 'retained')
+   .map(({reference, reading}) => [reference, reading])))];
+ });
+}
+
+function clusterWitnesses(witnesses, evidence) {
+ const distances = witnesses.map((_, i) => witnesses.map((_, j) =>
+  evidence.reduce((sum, row) => sum + Number(row[i] !== row[j]), 0)));
+ const clusters = witnesses.map((id, i) => ({id, members: [i]}));
+ while (clusters.length > 2) {
+  let best = Infinity;
+  let matches = [];
+  for (let i = 0; i < clusters.length; i++) {
+   for (let j = i + 1; j < clusters.length; j++) {
+    const left = clusters[i].members, right = clusters[j].members;
+    const distance = left.reduce((sum, a) => sum + right.reduce((n, b) => n + distances[a][b], 0), 0) /
+     (left.length * right.length);
+    if (distance < best) { best = distance; matches = []; }
+    if (distance === best) matches.push([i, j]);
+   }
+  }
+  // Leave overlapping ties unresolved instead of picking a grouping by witness order.
+  if (new Set(matches.flat()).size !== matches.length * 2) break;
+  const partners = new Map(matches);
+  const used = new Set(matches.map(([, j]) => j));
+  const merged = clusters.flatMap((cluster, i) => {
+   if (used.has(i)) return [];
+   if (!partners.has(i)) return [cluster];
+   const other = clusters[partners.get(i)];
+   return [{children: [cluster, other], members: [...cluster.members, ...other.members]}];
+  });
+  clusters.splice(0, clusters.length, ...merged);
+ }
+ return clusters;
+}
+
+function stemmaBranches(nodes) {
+ const list = element('ul', undefined, 'stemma-branches');
+ for (const node of nodes) {
+  const item = element('li');
+  if (node.children) {
+   item.append(stemmaBranches(node.children));
+  } else {
+   const button = element('button', edition.witnesses.get(node.id) || node.id, 'btn');
+   button.type = 'button';
+   button.dataset.witness = node.id;
+   button.onclick = () => {
+    witnessSelect.selectedIndex = [...witnessSelect.options].findIndex(option => option.dataset.witness === node.id);
+    refresh();
+   };
+   item.append(button);
+  }
+  list.append(item);
+ }
+ return list;
+}
+
+function renderStemma() {
+ const witnesses = [...edition.witnesses.keys()];
+ const evidence = stemmaEvidence().filter(row => new Set(row).size > 1);
+ const tree = byId('stemma-tree');
+ tree.replaceChildren();
+ byId('stemma').hidden = false;
+ byId('stemma-method').textContent = edition.data
+  ? 'JSON compares ordered profiles of retained variants per fully aligned, reviewed unit. Ignored variants are excluded.'
+  : 'TEI compares the readings explicitly attributed to every witness at each variable apparatus entry. Unattested or ambiguous entries are excluded.';
+ if (witnesses.length < 3 || !evidence.length) {
+  byId('stemma-summary').textContent = 'At least three witnesses and one fully comparable variable passage are needed.';
+  return;
+ }
+ const unit = edition.data ? 'unit' : 'apparatus entry';
+ byId('stemma-summary').textContent = `${witnesses.length} witnesses · ${evidence.length} comparable ${evidence.length === 1 ? unit : edition.data ? 'units' : 'apparatus entries'}`;
+ tree.append(stemmaBranches(clusterWitnesses(witnesses, evidence)));
+}
+
 function showDetails(index) {
  active = index;
  details.hidden = index < 0;
@@ -150,6 +249,9 @@ function showDetails(index) {
 
 function refresh() {
  const witness = witnessSelect.selectedOptions[0]?.dataset.witness;
+ for (const button of byId('stemma-tree').querySelectorAll('button')) {
+  button.setAttribute('aria-pressed', String(button.dataset.witness === witness));
+ }
  for (const locus of loci) {
   const text = witness ? locus.reading(witness) : locus.base;
   locus.button.textContent = text || '∅';
@@ -195,11 +297,12 @@ byId('export-file').onchange = async event => {
   content.replaceChildren(rendered);
   content.hidden = byId('toolbar').hidden = false;
   byId('status').textContent = edition.data ? 'JSON collation · review decisions are shown in the variant details.' : 'TEI edition';
+  renderStemma();
   refresh();
  } catch (error) {
   if (load !== loadNumber) return;
   loci = [];
-  content.hidden = byId('toolbar').hidden = details.hidden = true;
+  content.hidden = byId('toolbar').hidden = details.hidden = byId('stemma').hidden = true;
   byId('status').textContent = error instanceof SyntaxError ? 'The JSON file is invalid.' : error.message;
  }
 };
