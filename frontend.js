@@ -324,14 +324,18 @@ function render(){
   const tag=uncertain?`<span class="status-note">${t('needsReview')}</span>`:'';
   return `<div class="verse-row" id="unit-${idx}" data-unit="${idx}"><div class="verse-num"><span>${label}</span>${vbadge}${tag}</div><div class="witnesses">${rowHTML('A',aa,d.aa,idx)}${rowHTML('B',bb,d.bb,idx)}</div><div class="row-actions">${d.diff.length?`<button class="btn btn-secondary" onclick="setAll(${idx},'ignore')">${t('ignore')}</button><button class="btn btn-green" onclick="setAll(${idx},'keep')">${t('keep')}</button>`:''}<button class="btn btn-blue edit" onclick="editUnit(${idx})">${t('editText')}</button><button class="btn btn-outline edit" onclick="adjustUnit(${idx})">${t('adjustAlignment')}</button></div>${d.diff.length?`<div class="variant-line"><span class="variant-label">${t('variants')} · ${conf.toFixed(2)} ${t('similarity')}</span>${d.diff.map((v,k)=>`<span class="variant-item"><b>${esc(v.a)} → ${esc(v.b)}</b><button class="btn btn-light keepmini ${state[k]==='keep'?'chosen':''}" onclick="setVariant(${idx},${k},'keep')">${t('keep')}</button><button class="btn btn-light ignoremini ${state[k]==='ignore'?'chosen':''}" onclick="setVariant(${idx},${k},'ignore')">${t('ignore')}</button></span>`).join('')}</div>`:''}</div>`;
  };
+ let shown=0;
  $('results').innerHTML=visible.map(row=>{
   const segments=row.entries.filter(entry=>entry.id===activeWitness);
+  const hasText=items=>items.some(item=>item.text.trim());
+  if(!hasText(row.reference)&&!segments.some(entry=>hasText(entry.left)||hasText(entry.right)))return '';
+  shown++;
   const label=row.index+1;
   const contents=segments.length?segments.map((entry,index)=>segment(entry,segments.length>1?`${label}.${index+1}`:label)).join(''):
    `<div class="verse-row"><div class="verse-num">${label}</div><div class="witnesses"><div class="textline">${esc(row.reference.map(item=>item.text).join(' '))||'—'}</div><div class="textline"><em>${t('noPassage')}</em></div></div></div>`;
   return `<article class="pair-shared-unit" data-shared-unit="${label}">${contents}</article>`;
  }).join('')||`<div class="empty">${t('noFilterMatches')}</div>`;
- $('totalBadge').textContent=t('unitCount',{n:visible.length,total:all.length});
+ $('totalBadge').textContent=t('unitCount',{n:shown,total:all.length});
  $('pendingBadge').textContent=t('pending',{n:pending,total});
  $('keptBadge').textContent=t('retained',{n:kept});
 }
@@ -419,7 +423,7 @@ function witnessReading(entry,showReference,label){
  return `<section class="multi-reading" data-pair-unit="${index+1}">
  <div class="segment-heading"><button type="button" class="pair-unit-link" onclick="reviewWitnessAction('${id}',${index},'pair')">${t('pairView')} · ${t('unitLabel',{n:label})}</button>${entry.uncertain?`<span class="status-note">${t('needsReview')}</span>`:''}</div>
  ${showReference?`<div class="textline segment-reference"><span class="status-note">${t('pairReference')}</span><br>${left.length?renderText(diff.aa,index,review):`<em>${t('noPassage')}</em>`}</div>`:''}
- <div class="textline">${right.length?renderText(diff.bb,index,review):`<em>${t('noPassage')}</em>`}<div class="status-note">${esc(refs(right))}</div></div>
+ <div class="textline">${right.length?renderText(diff.bb,index,review):`<em>${t('noPassage')}</em>`}</div>
  ${diff.diff.length?`<div class="controls">${diff.diff.map((variant,k)=>`<span class="variant-item"><b>${esc(variant.a)} → ${esc(variant.b)}</b>
  <button type="button" class="btn btn-light keepmini ${state[k]==='keep'?'chosen':''}" onclick="reviewWitnessAction('${id}',${index},'keep',${k})">${t('keep')}</button>
  <button type="button" class="btn btn-light ignoremini ${state[k]==='ignore'?'chosen':''}" onclick="reviewWitnessAction('${id}',${index},'ignore',${k})">${t('ignore')}</button></span>`).join('')}</div>`:''}
@@ -571,7 +575,7 @@ function renderWitnessComparison(){
  <h4>${esc(names[id])}</h4>${readings}<div class="witness-facsimiles" data-witness-facsimiles="${id}"></div></section>`;
  const text=row=>{
   const referenceText=row.reference.map(unit=>unit.text).join(' ');
-  const reference=card('A',`<div class="multi-reading"><div class="textline">${esc(referenceText)||'—'}<div class="status-note">${esc(refs(row.reference))}</div></div></div>`);
+  const reference=card('A',`<div class="multi-reading"><div class="textline">${esc(referenceText)||'—'}</div></div>`);
   return `<div class="witness-board">${reference}<div class="witness-scroll" tabindex="0" role="region" aria-label="${esc(t('allViews'))}">
   ${ids.map(id=>{
    const readings=row.entries.filter(entry=>entry.id===id);
@@ -617,8 +621,8 @@ function renderMovements(){const summary=$('movementSummary');if(!summary)return
 function rowHTML(which,arr,tokens,idx){
  const id=which==='B'?activeWitness:which;
  const line=arr.length?renderText(tokens,idx):`<em class="status-note">${t('noPassage')}</em>`;
- const source=refs(arr),firstRef=arr[0]?.refs?.[0];
- return `<div class="witness-line"><div class="witness-label">${esc(names[id])}${firstRef?` <a class="page-link" onclick="openImages(${idx})">${esc(firstRef.page||'p.?')}</a>`:''}</div><div class="textline">${line}<div class="status-note">${esc(source)}</div></div></div>`
+ const firstRef=arr[0]?.refs?.[0];
+ return `<div class="witness-line"><div class="witness-label">${esc(names[id])}${firstRef?` <a class="page-link" onclick="openImages(${idx})">${esc(firstRef.page||'p.?')}</a>`:''}</div><div class="textline">${line}</div></div>`
 }
 function setVariant(i,k,action){decisions[i]=decisions[i]||{};decisions[i][k]=action;render()}
 function setAll(i,action){let g=groups[i],d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B'),g.spacing_matches);decisions[i]=decisions[i]||{};d.diff.forEach((_,k)=>decisions[i][k]=action);render()}

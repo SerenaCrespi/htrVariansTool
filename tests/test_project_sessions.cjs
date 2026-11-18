@@ -631,5 +631,21 @@ print(json.dumps({'witnesses': {'A': a, 'B': b}, 'alignments': app.align_alto_wo
   const additionExport=await page.evaluate(()=>buildJSONExport().units.find(unit=>
    Object.values(unit.readings).some(reading=>reading.segments.some(segment=>segment.text.includes('Principe Leopoldo')))));
   assert.equal(additionExport.type,'addition');
+  await page.evaluate(()=>{
+   addWitness();
+   pairResults.C=structuredClone(pairResults.B);
+   const addition=pairResults.C.alignments.find(group=>!group.aItems.length&&group.bItems.length);
+   pairResults.C.alignments=[{...addition,bItems:[{text:'Solo nel terzo testimone',refs:[]}]}];
+   setWitnessView('pair');
+  });
+  const pairLabels=await page.locator('.pair-shared-unit').evaluateAll(rows=>rows.map(row=>Number(row.dataset.sharedUnit)));
+  const pairTotal=await page.locator('#totalBadge').textContent();
+  await page.getByRole('button',{name:'All witnesses',exact:true}).click();
+  const other=page.locator('.multi-row').filter({hasText:'Solo nel terzo testimone'});
+  assert.equal(await other.count(),1);
+  const otherLabel=Number((await other.getAttribute('id')).split('-').at(-1))+1;
+  assert.ok(!pairLabels.includes(otherLabel));
+  assert.match(pairTotal,new RegExp(`^${pairLabels.length} / ${await page.locator('.multi-row').count()}`));
+
  }finally{await page.close()}
 });
