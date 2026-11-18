@@ -551,3 +551,28 @@ test('partial readings keep the full ALTO transcription and its word geometry in
   assert.deepEqual(areas,[[[25,10],[45,10],[45,30],[25,30]],[[50,10],[70,10],[70,30],[50,30]]]);
  }finally{await page.close()}
 });
+
+test('a multi-line reading has one crop and the full transcription of both source lines',async()=>{
+ const page=await browser.newPage();
+ try{
+  await page.goto(url);
+  await upload(page,'#fileA',['Destinata già alla duchessa quale']);
+  await page.locator('#addWitnessBtn').click();
+  await upload(page,'#fileB',['Destinata già alla duchessa','quale scrive al poeta']);
+  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+  const png=await page.evaluate(()=>{
+   const canvas=document.createElement('canvas');
+   canvas.width=canvas.height=1000;
+   return canvas.toDataURL().split(',')[1];
+  });
+  await page.locator('#imagesB').setInputFiles({name:'page.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
+  await page.getByRole('button',{name:'Line by line',exact:true}).click();
+  const card=page.locator('.witness-card[data-witness="B"]');
+  await card.locator('img.line-crop').waitFor();
+  assert.equal(await card.locator('.witness-facsimiles figure').count(),1);
+  assert.match(await card.locator('.facsimile-transcription').innerText(),/Destinata già alla duchessa\nquale scrive al poeta/);
+  assert.deepEqual(await card.locator('.facsimile-context').allTextContents(),['scrive','al','poeta']);
+  await card.locator('.facsimile-open').click();
+  assert.equal(await page.locator('#facsimileDialog svg polygon').count(),2);
+ }finally{await page.close()}
+});

@@ -75,5 +75,28 @@ class ALTOTests(unittest.TestCase):
                                  ' '.join(unit['text'] for unit in title))
 
 
+    def test_tordi_dedication_separates_unrelated_fragment_and_keeps_supported_reading(self):
+        samples = Path(__file__).resolve().parents[1] / 'samples'
+
+        def load(dossier):
+            return parse_alto_bundle([
+                {'name': path.name, 'text': path.read_text(encoding='utf-8')}
+                for path in sorted((samples / f'Malmantile_{dossier}').glob('*.xml'))
+            ])
+
+        reference = load('II.IV.232')
+        rows = align_alto_words(reference, load('Tordi.386'))
+        rejected = [row for row in rows if row.get('lexical_review')]
+        self.assertTrue(any(row['aItems'] and not row['bItems'] and
+                            'Arciduchessa Claudia' in row['aItems'][0]['text'] for row in rejected))
+        self.assertTrue(any(not row['aItems'] and row['bItems'] and
+                            row['bItems'][0]['text'] == "scritta dall'" for row in rejected))
+        supported = align_alto_words(reference, load('Tordi.435'))
+        row = next(row for row in supported if row['aItems'] and 'Arciduchessa Claudia' in row['aItems'][0]['text'])
+        self.assertTrue(row['bItems'][0]['text'].startswith('Destinata già'))
+        self.assertEqual(row['bItems'][-1]['text'], 'quale')
+        self.assertEqual(len({ref['line'] for item in row['bItems'] for ref in item['refs']}), 2)
+
+
 if __name__=='__main__':
     unittest.main()

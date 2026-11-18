@@ -556,17 +556,27 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
     rows = [row for row in rows if id(row) not in used_right]
 
     result = []
-    for index, row in enumerate(rows):
+    for row in rows:
         a_items = _word_items(row["aItems"])
         b_items = _word_items(row["bWords"])
-        left = " ".join(item["text"] for item in a_items)
-        right = " ".join(item["text"] for item in b_items)
         score_left = " ".join(word["key"] for word in row["aItems"])
         score_right = " ".join(word["key"] for word in row["bWords"])
-        result.append({"id": index, "a0": row["a0"], "a1": row["a1"],
-                       "b0": row["b0"], "b1": row["b1"], "aItems": a_items,
-                       "bItems": b_items, "score": 0,
-                       "similarity": similarity(score_left, score_right) if score_left and score_right else 0.0})
+        score = similarity(score_left, score_right) if score_left and score_right else 0.0
+        reading = {"a0": row["a0"], "a1": row["a1"],
+                   "b0": row["b0"], "b1": row["b1"], "aItems": a_items,
+                   "bItems": b_items, "score": 0, "similarity": score}
+        # Suppress unsupported substitutions after matching is finished.
+        # Keep both fragments and never search for a replacement partner.
+        left_tokens, right_tokens = normalize(score_left), normalize(score_right)
+        if (left_tokens and right_tokens and max(len(left_tokens), len(right_tokens)) >= 3
+                and score < 0.15 and not set(left_tokens).intersection(right_tokens)):
+            result.append({**reading, "bItems": [], "similarity": 0.0, "lexical_review": True})
+            result.append({**reading, "aItems": [], "a0": row["a1"], "a1": row["a1"],
+                           "similarity": 0.0, "lexical_review": True})
+        else:
+            result.append(reading)
+    for index, reading in enumerate(result):
+        reading["id"] = index
     return result
 
 

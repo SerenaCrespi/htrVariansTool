@@ -285,7 +285,7 @@ function render(){
  if(!groups.length){$('results').innerHTML=`<div class="empty">${t('noAlignment')}</div>`;return}
  let html='',total=0,kept=0,pending=0,shown=0;
  groups.forEach((g,idx)=>{
-  const aa=groupItems(A,g,'A'),bb=groupItems(B,g,'B'),at=groupText(A,g,'A'),bt=groupText(B,g,'B'),d=compareUnit(at,bt),state=decisions[idx]||{},conf=Number(g.similarity||0),uncertain=!!(g.semantic_review||(at&&bt&&conf<.45));
+  const aa=groupItems(A,g,'A'),bb=groupItems(B,g,'B'),at=groupText(A,g,'A'),bt=groupText(B,g,'B'),d=compareUnit(at,bt),state=decisions[idx]||{},conf=Number(g.similarity||0),uncertain=!!(g.semantic_review||g.lexical_review||(at&&bt&&conf<.45));
   total+=d.diff.length;
   for(let k=0;k<d.diff.length;k++){if(state[k]==='keep')kept++;else if(!state[k])pending++}
   const hasPending=d.diff.some((_,k)=>!state[k]);
@@ -360,7 +360,7 @@ function witnessEntryReview(entry){
  const diff=compareUnit(read(left),read(right));
  return {...entry,review,diff,pending:diff.diff.filter((_,k)=>!review[index]?.[k]).length,
   kept:diff.diff.filter((_,k)=>review[index]?.[k]==='keep').length,
-  uncertain:!!(group.semantic_review||(left.length&&right.length&&group.similarity<.45))};
+  uncertain:!!(group.semantic_review||group.lexical_review||(left.length&&right.length&&group.similarity<.45))};
 }
 function witnessReading(entry,showReference){
  const {id,index,left,right,review,diff}=entry,state=review[index]||{};
@@ -418,11 +418,11 @@ function altoLineOutline(ref){
   return Array.from({length:points.length/2},(_,n)=>points.slice(2*n,2*n+2));
  return altoRectangle(ref?.coords);
 }
-function pageWithOutline(url,ref){
- const outline=altoLineOutline(ref),title=`${t('fullPage')} ${ref?.page||''} · ${t('line')} ${ref?.line||''}`;
+function pageWithOutline(url,ref,refs=[ref]){
+ const outlines=refs.map(altoLineOutline).filter(Boolean),title=`${t('fullPage')} ${ref?.page||''} · ${t('line')} ${ref?.line||''}`;
  const width=Number(ref?.page_width)||0,height=Number(ref?.page_height)||0;
- return `<span class="outlined-page"><img class="full-page" src="${esc(url)}" alt="${esc(title)}">${outline?
-  `<svg aria-hidden="true" preserveAspectRatio="none" data-page-width="${width}" data-page-height="${height}" ${width>0&&height>0?`viewBox="0 0 ${width} ${height}"`:'hidden'}><polygon points="${outline.map(point=>point.join(',')).join(' ')}"></polygon></svg>`:''}</span>`;
+ return `<span class="outlined-page"><img class="full-page" src="${esc(url)}" alt="${esc(title)}">${outlines.length?
+  `<svg aria-hidden="true" preserveAspectRatio="none" data-page-width="${width}" data-page-height="${height}" ${width>0&&height>0?`viewBox="0 0 ${width} ${height}"`:'hidden'}>${outlines.map(outline=>`<polygon points="${outline.map(point=>point.join(',')).join(' ')}"></polygon>`).join('')}</svg>`:''}</span>`;
 }
 function facsimileAreas({ref,words,selected}){
  if(!selected.size)return [];
@@ -432,18 +432,27 @@ function facsimileAreas({ref,words,selected}){
  return [...new Set([...selected].map(index=>boxes[index]))]
   .filter(value=>!contextBoxes.has(value)).map(altoRectangle).filter(Boolean);
 }
-async function witnessThumbnail(id,line){
- const {ref,words,selected}=line,item=resolveWitnessImage(id,ref);
+function combinedLineRef(lines){
+ if(lines.length===1&&altoRectangle(lines[0].ref.coords))return lines[0].ref;
+ const points=lines.flatMap(({ref})=>altoLineOutline(ref)||[]);
+ if(!points.length)return lines[0].ref;
+ const xs=points.map(([x])=>x),ys=points.map(([,y])=>y);
+ const left=Math.min(...xs),top=Math.min(...ys);
+ return {...lines[0].ref,coords:[left,top,Math.max(...xs)-left,Math.max(...ys)-top].join(',')};
+}
+async function witnessThumbnail(id,lines,item){
+ const ref=combinedLineRef(lines);
  let crop;
- if(item)try{crop=await cropLine(item.url,ref,facsimileAreas(line))}catch{}
- const transcription=selected.size&&selected.size<words.length
-  ? `<p class="facsimile-transcription">${words.map((word,index)=>
+ if(item)try{crop=await cropLine(item.url,ref,lines.flatMap(facsimileAreas))}catch{}
+ const transcription=lines.length>1||lines.some(line=>line.selected.size&&line.selected.size<line.words.length)
+  ? `<p class="facsimile-transcription">${lines.map(({words,selected})=>words.map((word,index)=>
     selected.has(index)?`<mark class="facsimile-selected">${esc(word)}</mark>`:`<span class="facsimile-context">${esc(word)}</span>`
-   ).join(' ')}</p>`:'';
- const thumbnail=crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:
+   ).join(' ')).join('<br>')}</p>`:'';
+ const lineIds=lines.map(({ref})=>ref.line).join(' · ');
+ const thumbnail=crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(lineIds)}">`:
   item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref.page||'')}">`:
    `<div class="status-note">${t('missingImage')}</div>`;
- const preview=item?`<button type="button" class="facsimile-open" aria-label="${esc(`${t('fullPage')} · ${names[id]} · ${ref.line||''}`)}">${thumbnail}</button><template>${pageWithOutline(item.url,ref)}</template>`:thumbnail;
+ const preview=item?`<button type="button" class="facsimile-open" aria-label="${esc(`${t('fullPage')} · ${names[id]} · ${lineIds}`)}">${thumbnail}</button><template>${pageWithOutline(item.url,ref,lines.map(line=>line.ref))}</template>`:thumbnail;
  return `<figure>${preview}${transcription}</figure>`;
 }
 function renderWitnessImages(rows,sources){
@@ -464,7 +473,14 @@ function renderWitnessImages(rows,sources){
   const {id,items}=pending.get(target);
   pending.delete(target);
   const lines=witnessSourceLines(items,sources[id]);
-  const thumbnails=await Promise.all(lines.map(line=>witnessThumbnail(id,line)));
+  const pages=new Map();
+  for(const line of lines){
+   const {ref}=line,item=resolveWitnessImage(id,ref);
+   const key=JSON.stringify([item?.url,ref.alto_file,ref.page,ref.page_order]);
+   if(!pages.has(key))pages.set(key,{lines:[],item});
+   pages.get(key).lines.push(line);
+  }
+  const thumbnails=await Promise.all([...pages.values()].map(page=>witnessThumbnail(id,page.lines,page.item)));
   if(target.isConnected)target.innerHTML=thumbnails.join('');
  }
  if(witnessView==='focus'){
@@ -604,7 +620,27 @@ function moveDraftLine(){const selected=$('moveSource').value,target=Number($('m
 function saveAdjustedUnit(){const previousGroups=groups,previousDecisions=decisions,next=alignmentDraft.groups.map((g,i)=>{const left=groupText(A,g,'A'),right=groupText(B,g,'B');return {...g,id:i,similarity:left&&right?similarityClient(left,right):0}}),nextDecisions=preserveDecisionsByKey(previousGroups,next,previousDecisions);groups=next;pairResults[activeWitness].alignments=next;alignmentDraft=null;decisions=nextDecisions;pairReviews[activeWitness]={decisions,movementDecisions};render();renderMovements();$('loadedStatus').textContent+=' · '+t('manualSaved');$('modal').innerHTML=''}
 function similarityClient(a,b){const x=tokenKey(a).split('').join(' '),y=tokenKey(b).split('').join(' ');if(!x&&!y)return 1;if(!x||!y)return 0;let prev=Array.from({length:y.length+1},(_,i)=>i);for(let i=1;i<=x.length;i++){const cur=[i];for(let j=1;j<=y.length;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(x[i-1]===y[j-1]?0:1));prev=cur}return Math.max(0,1-prev[y.length]/Math.max(x.length,y.length))}
 function resolveImage(which,ref){return resolveWitnessImage(which==='B'?activeWitness:which,ref)}
-function resolveWitnessImage(id,ref){if(!ref)return null;const key=`${id}:${ref.alto_file||ref.page}`;if(imageOverrides[key])return imageOverrides[key];const stem=s=>String(s||'').split('/').pop().replace(/\.[^.]+$/,'').toLowerCase();const wanted=[stem(ref.image_file),stem(ref.alto_file),stem(ref.page)].filter(Boolean);let match=images[id].find(x=>wanted.some(w=>stem(x.name)===w||stem(x.name).includes(w)||w.includes(stem(x.name))));if(!match&&images[id].length===1)match=images[id][0];if(!match){const uri=$(`iiif${id}`).value.trim();if(uri)return {name:t('imageFallback'),url:uri}}return match||null}
+function resolveWitnessImage(id,ref){
+ if(!ref)return null;
+ const key=`${id}:${ref.alto_file||ref.page}`;
+ if(imageOverrides[key])return imageOverrides[key];
+ const stem=value=>String(value||'').split('/').pop().replace(/\.[^.]+$/,'').toLowerCase();
+ const available=images[id]||[];
+ // Generic page IDs can repeat across several ALTO files in one dossier.
+ const exact=expected=>expected?available.filter(item=>stem(item.name)===stem(expected)):[];
+ const byImage=exact(ref.image_file);
+ if(byImage.length===1)return byImage[0];
+ const byAlto=exact(ref.alto_file);
+ if(byAlto.length===1||available.length===1){
+  const source=id==='A'?A:pairResults[id]?.B||[];
+  const sourceRefs=source.flatMap(unit=>unit.refs||[]);
+  const pageKeys=refs=>new Set(refs.map(r=>JSON.stringify([r.alto_file,r.page,r.page_order])));
+  if(byAlto.length===1&&pageKeys(sourceRefs.filter(r=>r.alto_file===ref.alto_file)).size<=1)return byAlto[0];
+  if(available.length===1&&pageKeys(sourceRefs).size===1)return available[0];
+ }
+ const uri=$(`iiif${id}`).value.trim();
+ return uri?{name:t('imageFallback'),url:uri}:null;
+}
 function chooseImage(which,ref){if(!ref)return null;const id=which==='B'?activeWitness:which;let found=resolveImage(which,ref);if(found)return found;if(!images[id].length)return null;let list=images[id].map((x,i)=>`${i+1}. ${x.name}`).join('\n');let n=Number(prompt(t('chooseImage',{page:ref?.page||'',w:names[id],list})));if(Number.isInteger(n)&&n>0&&n<=images[id].length){let item=images[id][n-1];imageOverrides[`${id}:${ref?.alto_file||ref?.page}`]=item;projectImageLinks[`${id}:${ref?.alto_file||ref?.page}`]=item.name;saveBrowserSession();return item}return null}
 async function cropLine(imageUrl,ref,areas=[]){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{try{const vals=String(ref.coords||'').split(',').map(Number);if(vals.length<4||vals.some(v=>!Number.isFinite(v))){resolve(null);return}let[x,y,w,h]=vals;const pw=Number(ref.page_width)||image.naturalWidth,ph=Number(ref.page_height)||image.naturalHeight,sx=image.naturalWidth/pw,sy=image.naturalHeight/ph;let left=x*sx,top=y*sy,width=w*sx,height=h*sy,padX=Math.max(12,height*.18),padY=Math.max(8,height*.24);left=Math.max(0,left-padX);top=Math.max(0,top-padY);width=Math.min(image.naturalWidth-left,width+padX*2);height=Math.min(image.naturalHeight-top,height+padY*2);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));const context=canvas.getContext('2d');
 const draw=()=>context.drawImage(image,left,top,width,height,0,0,canvas.width,canvas.height);
@@ -737,11 +773,11 @@ function jsonUnitReadings(ids,idMap,ranges){
      variants.push({witness:idMap[id],segment,index:i+1,reference:variant.a==='∅'?null:variant.a,
       reading:variant.b==='∅'?null:variant.b,status:choice==='keep'?'retained':choice==='ignore'?'dismissed':'pending'});
     }
-    return {...text,segment,status:text.text?(addition?'addition':'aligned'):'omission',
+    return {...text,segment,status:group.lexical_review?'unaligned':text.text?(addition?'addition':'aligned'):'omission',
      requiresReview:uncertain,similarity:group.similarity,alignmentSource:group.alignment_source||'lexical',
      reference:comparisonReference};
    });
-   return [idMap[id],{status:!segments.length?'unaligned':segments.every(segment=>segment.status==='omission')?'omission':addition?'addition':'aligned',segments}];
+   return [idMap[id],{status:!segments.length?'unaligned':segments.every(segment=>segment.status==='unaligned')?'unaligned':segments.every(segment=>segment.status==='omission')?'omission':addition?'addition':'aligned',segments}];
   }));
   const referenceSegments=row.entries.filter(entry=>entry.id===ids[0]).map(entry=>entry.index+1);
   const genres=[...new Set(ranges.filter(range=>referenceSegments.some(segment=>segment>=range.start&&segment<=range.end)).map(range=>range.genre))];
@@ -762,7 +798,7 @@ function buildJSONExport(){
   witnesses:Object.fromEntries(ids.map(id=>[idMap[id],names[id]])),
   structure:{comparisonWitness:idMap[ids[0]],ranges,...(titles.length?{titleLines:titles}:{})},
   units:jsonUnitReadings(ids,idMap,ranges),
-  comparisons:Object.fromEntries(ids.map(id=>{const p=pairResults[id];return[idMap[id],{alignmentMethod:p.alignment_method,semanticFallback:p.semantic_fallback,alignments:p.alignments.map((g,i)=>({unit:i+1,readingReference:groupText(p.A,g,'A'),readingWitness:groupText(p.B,g,'B'),sourceReference:refs(groupItems(p.A,g,'A')),sourceWitness:refs(groupItems(p.B,g,'B')),decisions:currentReview(id).decisions[i]||{},similarity:g.similarity,alignmentSource:g.alignment_source||'lexical',requiresReview:!!g.semantic_review}))}]}))
+  comparisons:Object.fromEntries(ids.map(id=>{const p=pairResults[id];return[idMap[id],{alignmentMethod:p.alignment_method,semanticFallback:p.semantic_fallback,alignments:p.alignments.map((g,i)=>({unit:i+1,readingReference:groupText(p.A,g,'A'),readingWitness:groupText(p.B,g,'B'),sourceReference:refs(groupItems(p.A,g,'A')),sourceWitness:refs(groupItems(p.B,g,'B')),decisions:currentReview(id).decisions[i]||{},similarity:g.similarity,alignmentSource:g.alignment_source||'lexical',requiresReview:!!(g.semantic_review||g.lexical_review)}))}]}))
  };
 }
 function exportJSON(){try{download(t('jsonName'),JSON.stringify(buildJSONExport(),null,2),'application/json')}catch(error){alert(exportError(error))}}
