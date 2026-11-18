@@ -477,6 +477,7 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
   assert.deepEqual(scroll,{moved:true,fixed:true});
   await page.setViewportSize({width:1280,height:900});
   await page.evaluate(()=>activatePair('B'));
+  await page.locator('.multi-row').nth(1).evaluate(node=>{window.untouchedReviewRow=node});
   for(const [witness,action] of [['C','Keep'],['B','Ignore']]){
    const card=first.locator(`.witness-card[data-witness="${witness}"]`);
    const button=card.getByRole('button',{name:action,exact:true}).first();
@@ -488,6 +489,7 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
    await button.click();
    assert.ok(Math.abs(await first.evaluate(row=>row.getBoundingClientRect().top)-top)<=1);
    assert.equal(await facsimile.evaluate(node=>node===window.reviewFacsimile),true);
+   assert.equal(await page.locator('.multi-row').nth(1).evaluate(node=>node===window.untouchedReviewRow),true);
    assert.equal(await page.evaluate(id=>currentReview(id).decisions[0][0],witness),action.toLowerCase());
   }
 
@@ -537,6 +539,10 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
   await page.evaluate(()=>sessionReady);
   assert.equal(await page.locator('[data-witness-view="focus"]').getAttribute('aria-pressed'),'true');
   assert.match(await page.locator('.focus-nav').innerText(),/Line 2 of 2/);
+  await page.evaluate(()=>sessionStorage.setItem('varians-session-view','{broken'));
+  await page.reload();
+  await page.evaluate(()=>sessionReady);
+  assert.match(await page.locator('.focus-nav').innerText(),/Line 2 of 2/);
   await page.locator('[data-witness-facsimiles="C"]').scrollIntoViewIfNeeded();
   await page.locator('.witness-facsimiles img.line-crop').nth(2).waitFor();
   await page.getByRole('button',{name:'Previous line',exact:true}).click();
@@ -552,6 +558,11 @@ test('alignment streams actual stages and preserves the JSON endpoint',async()=>
  try{
   const data={sentences:{A:[{text:'testo di riferimento',refs:[]}],B:[{text:'testo di confronto',refs:[]}]}};
   const headers={accept:'application/x-ndjson'};
+  for(const malformed of [{alto:null},{sentences:[]},{alto:{A:[{name:1,text:'xml'}],B:[]}}]){
+   const failure=await page.request.post(url+'/api/align',{data:malformed});
+   assert.equal(failure.status(),400);
+   assert.equal(typeof (await failure.json()).error,'string');
+  }
   const streamed=await page.request.post(url+'/api/align',{headers,data});
   const events=(await streamed.text()).trim().split('\n').map(line=>JSON.parse(line));
   assert.deepEqual(events.slice(0,-1),[{completed:1},{completed:2}]);
@@ -846,6 +857,11 @@ test('the variants visualizer opens real TEI and JSON exports in a separate tab'
   await viewer.locator('#wit').selectOption({index:2});
   assert.match(await viewer.locator('#content').innerText(),/Prima strofa[\s\S]*Seconda riga/);
   await page.getByRole('button',{name:'All witnesses',exact:true}).click();
+  const malformed=JSON.parse(json);
+  malformed.units[0].readings[Object.keys(malformed.witnesses)[0]].segments=null;
+  await input.setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(malformed))});
+  await viewer.getByText('The JSON readings or variants in unit 1 are invalid.',{exact:true}).waitFor();
+  assert.match(await viewer.locator('#content').innerText(),/Prima strofa[\s\S]*Seconda riga/);
   const snapshot=await page.evaluate(()=>captureProject());
   await Promise.all([viewer.waitForEvent('close'),viewer.getByRole('link',{name:'Varians workspace'}).click()]);
   assert.equal(await page.locator('[data-witness-view="all"]').getAttribute('aria-pressed'),'true');

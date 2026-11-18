@@ -99,7 +99,12 @@
    }
    const lemWits=readings.get(lemma.trim().replace(/\s+/g,' '))||[];
    const rdgs=[...readings].filter(([reading])=>reading!==lemma.trim().replace(/\s+/g,' ')).map(([reading,wits])=>`<rdg wit="${wits.join(' ')}">${escapeXML(reading)}</rdg>`);
-   out.push(`<app type="collation"><lem wit="${lemWits.join(' ')}">${escapeXML(lemma)}</lem>${rdgs.join('')}</app>`);cursor=region.a1;
+   const anchors=region.edits.map(edit=>edit.anchor);
+   const start=Math.min(...anchors.map(anchor=>anchor?.[0]));
+   const end=Math.max(...anchors.map(anchor=>anchor?.[1]));
+   const key=Number.isFinite(start)?JSON.stringify([start,end,start===end?Math.min(...anchors.map(anchor=>anchor[2])):null]):null;
+   const marker=key?` data-anchor="${encodeURIComponent(key)}"`:'';
+   out.push(`<app type="collation"${marker}><lem wit="${lemWits.join(' ')}">${escapeXML(lemma)}</lem>${rdgs.join('')}</app>`);cursor=region.a1;
   }
   out.push(slice.slice(cursor).map(escapeXML).join(' '));return out.filter(Boolean).join(' ');
  }
@@ -206,12 +211,19 @@
   });
  }
 
- function identifyApparatus(body,idMap){
-  const reserved=new Set(Object.values(idMap));
+ function identifyApparatus(body,idMap,registry=new Map()){
+  const witnessIds=new Set(Object.values(idMap));
+  const reserved=new Set([...witnessIds,...registry.values()]);
+  const issued=new Set();
   let next=1;
-  return body.replaceAll('<app type="collation">',()=>{
-   let id;
-   do{id=`app-${next++}`}while(reserved.has(id));
+  return body.replace(/<app type="collation"(?: data-anchor="([^"]+)")?>/g,(_,key)=>{
+   let id=registry.get(key);
+   if(!id||issued.has(id)||witnessIds.has(id)){
+    do{id=`app-${next++}`}while(reserved.has(id));
+    if(key&&!issued.has(registry.get(key)))registry.set(key,id);
+    reserved.add(id);
+   }
+   issued.add(id);
    return `<app type="collation" xml:id="${id}">`;
   });
  }

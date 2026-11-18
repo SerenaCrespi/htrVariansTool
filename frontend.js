@@ -122,7 +122,7 @@ async function loadFile(which,fileList){
   if(rawA.length&&witnessIds.slice(1).some(id=>rawByWitness[id]?.length)){
    const success=await runAlign(false,which==='A'?null:[which]);
    if(!success)rollback();
-   else if(which==='A')titleLines.clear();
+   else if(which==='A'){titleLines.clear();apparatusIds.clear()}
   }
  }catch(e){rollback();alert(e.message)}
 }
@@ -271,12 +271,17 @@ async function runAlign(useEdited=false,onlyWitnesses=null){
    pairReviews[id]={decisions:{},movementDecisions:{}};
    editedMode=false;
   }else{
-   const settled=await Promise.allSettled(targets.map(async(id,index)=>{
-    try{
-     const data=await requestAlignment({alto:{A:rawByWitness.A,B:rawByWitness[id]},names:{A:names.A,B:names[id]}},n=>update(index,n));
-     return [id,data];
-    }catch(error){throw Error(`${names[id]}: ${error.message}`)}
-   }));
+   const settled=[];
+   for(let start=0;start<targets.length;start+=2){
+    const batch=await Promise.allSettled(targets.slice(start,start+2).map(async(id,index)=>{
+     try{
+      const data=await requestAlignment({alto:{A:rawByWitness.A,B:rawByWitness[id]},names:{A:names.A,B:names[id]}},n=>update(start+index,n));
+      return [id,data];
+     }catch(error){throw Error(`${names[id]}: ${error.message}`)}
+    }));
+    settled.push(...batch);
+    if(batch.some(result=>result.status==='rejected'))break;
+   }
    const failure=settled.find(result=>result.status==='rejected');
    if(failure)throw failure.reason;
    const results=settled.map(result=>result.value);
@@ -325,7 +330,7 @@ function removeWitness(id){
   names.A=t('referenceWitness');
   for(const key of ['fileA','imagesA','dossierNameA','iiifA'])$(key).value='';
   delete $('dossierNameA').dataset.userEdited;
-  titleLines.clear();
+  titleLines.clear();apparatusIds.clear();
   pairResults={};pairReviews={};
  }else{
   witnessIds=witnessIds.filter(witness=>witness!==id);
@@ -355,13 +360,13 @@ function removeWitness(id){
 }
 function renderComparisonControl(){const control=$('comparisonControl'),select=$('compareWitness');if(!control||!select)return;const ids=Object.keys(pairResults);control.hidden=!ids.length||witnessView!=='pair';if(!ids.length)return;select.innerHTML=ids.map(id=>`<option value="${id}">${esc(names[id])}</option>`).join('');select.value=pairResults[activeWitness]?activeWitness:ids[0];select.onchange=()=>activatePair(select.value)}
 function activatePair(id,saveCurrent=true,redraw=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid:')||p.alignment_method.includes('bertalign +')||p.alignment_method.includes('global displaced-run recovery')?'alignSaved':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){if(redraw){render();renderMovements();}$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
-function render(facsimiles){
- witnessImageObserver?.disconnect();
+function render(facsimiles,reviewAnchor){
+ if(!reviewAnchor)witnessImageObserver?.disconnect();
  saveBrowserSession();
 
  renderGenreEditor();
  $('witnessViews').hidden=!groups.length;
- if(witnessView!=='pair'&&groups.length){renderWitnessComparison(facsimiles);return}
+ if(witnessView!=='pair'&&groups.length){renderWitnessComparison(facsimiles,reviewAnchor);return}
  if(!groups.length){$('results').innerHTML=`<div class="empty">${t('noAlignment')}</div>`;return}
  const {all,visible}=comparisonRows();
  const entries=all.flatMap(row=>row.entries.filter(entry=>entry.id===activeWitness));
@@ -461,10 +466,17 @@ function witnessRows(includeInteriorInsertions=false){
   Number(!!a.reference.length)-Number(!!b.reference.length)||
   (a.entries.length&&b.entries.length?order(a.entries[0],b.entries[0]):0));
 }
+const witnessDiffs=new WeakMap();
 function witnessEntryReview(entry){
  const {id,index,left,right,group}=entry,review=currentReview(id).decisions;
  const read=items=>items.map(item=>item.text).filter(Boolean).join(' ');
- const diff=compareUnit(read(left),read(right),group.spacing_matches);
+ const a=read(left),b=read(right),spacing=group.spacing_matches;
+ let cached=witnessDiffs.get(group);
+ if(!cached||cached.a!==a||cached.b!==b||cached.spacing!==spacing){
+  cached={a,b,spacing,diff:compareUnit(a,b,spacing)};
+  witnessDiffs.set(group,cached);
+ }
+ const {diff}=cached;
  return {...entry,review,diff,pending:diff.diff.filter((_,k)=>!review[index]?.[k]).length,
   kept:diff.diff.filter((_,k)=>review[index]?.[k]==='keep').length,
   uncertain:!!(group.semantic_review||group.lexical_review||(left.length&&right.length&&group.similarity<.45))};
@@ -642,7 +654,7 @@ function combinedWitnessReading(readings,label,detailsOpen){
  ${readings.map((entry,index)=>witnessReading(entry,false,`${label}.${index+1}`,false)).join('')}
  </details></div>`;
 }
-function renderWitnessComparison(facsimiles){
+function renderWitnessComparison(facsimiles,reviewAnchor){
  const {all,visible}=comparisonRows();
  const entries=all.flatMap(row=>row.entries);
  $('totalBadge').textContent=t('unitCount',{n:visible.length,total:all.length});
@@ -682,13 +694,27 @@ function renderWitnessComparison(facsimiles){
  const showImages=rows=>{
   if(facsimiles)for(const target of $('results').querySelectorAll('[data-witness-facsimiles]')){
    const cached=facsimiles.get(facsimilePosition(target));
-   if(cached)target.replaceWith(cached);
+   if(cached&&cached!==target)target.replaceWith(cached);
   }
   for(const node of $('results').querySelectorAll('.witness-scroll'))node.scrollLeft=previousScroll.get(node.closest('article').id)||0;
   renderWitnessImages(rows,sources);
  };
  if(witnessView==='all'){
-  $('results').innerHTML=visible.map(row=>`<article class="multi-row" id="witness-unit-${row.index}"><h3>${t('unitLabel',{n:row.index+1})}</h3>${text(row)}</article>`).join('');
+  const markup=row=>`<article class="multi-row" id="witness-unit-${row.index}"><h3>${t('unitLabel',{n:row.index+1})}</h3>${text(row)}</article>`;
+  const changed=reviewAnchor&&viewFilter==='all'&&visible.find(row=>reviewAnchor.id===`witness-unit-${row.index}`);
+  if(changed){
+   const images=new Map([...reviewAnchor.querySelectorAll('[data-witness-facsimiles]')]
+    .map(node=>[node.dataset.witnessFacsimiles,node]));
+   const id=reviewAnchor.id;
+   reviewAnchor.outerHTML=markup(changed);
+   for(const node of $(id).querySelectorAll('[data-witness-facsimiles]')){
+    const existing=images.get(node.dataset.witnessFacsimiles);
+    if(existing)node.replaceWith(existing);
+   }
+   $(id).querySelector('.witness-scroll').scrollLeft=previousScroll.get(id)||0;
+   return;
+  }
+  $('results').innerHTML=visible.map(markup).join('');
   showImages(visible);
   return;
  }
@@ -735,7 +761,7 @@ function renderReviewDecision(){
  const currentY=window.scrollY;
  const facsimiles=new Map([...results.querySelectorAll('[data-witness-facsimiles]')]
   .filter(target=>target.firstElementChild).map(target=>[facsimilePosition(target),target]));
- render(facsimiles);
+ render(facsimiles,within&&witnessView==='all'&&viewFilter==='all'?anchor:null);
  const after=unit?$(unit):shared?results.querySelector(`[data-shared-unit="${shared}"]`):null;
  const y=after?window.scrollY+after.getBoundingClientRect().top-before:currentY;
  window.scrollTo({top:y,behavior:'instant'});
@@ -880,10 +906,16 @@ function updateGenreRangeStatus(){
  if(draft.mode==='mixed')try{VariansExport.validateGenreRanges(draft.ranges,units.length);status=t('rangesValid')}catch(error){status=exportError(error)}
  $('genreRangeStatus').textContent=status;
 }
+let apparatusIds=new Map();
 function buildTEI(ranges=genreRanges,genre=uniformGenre,titles=titleLines){
  const ids=Object.keys(pairResults);if(!ids.length)throw Error(t('noAlignment'));
  const referenceUnits=exportReferenceUnits(),idMap=exportIdentifiers();
- const edits=ids.flatMap(selectedVariantEdits).map(e=>e.id===ids[0]?{...e,referenceUnit:e.group}:e);
+ const offsets=VariansExport.unitWordOffsets(referenceUnits);
+ const edits=ids.flatMap(selectedVariantEdits).map(e=>{
+  const owner=e.id===ids[0]?e.group:undefined;
+  const fallback=owner===undefined&&e.a0===e.a1?offsets.findIndex((offset,index)=>offset<=e.a0&&offsets[index+1]>e.a0):-1;
+  return {...e,referenceUnit:owner,anchor:[e.a0,e.a1,owner??(fallback<0?referenceUnits.length-1:fallback)]};
+ });
  const sourceUnits=pairResults[ids[0]].A;
  const rangesToRender=effectiveGenreRanges(referenceUnits.length,ranges,genre);
  const body=VariansExport.renderGenreRanges(referenceUnits,rangesToRender,
@@ -891,7 +923,7 @@ function buildTEI(ranges=genreRanges,genre=uniformGenre,titles=titleLines){
   (start,end)=>VariansExport.renderALTOPoetry(referenceUnits,sourceUnits,edits,ids,idMap,start,end),
   titles.size?(start,end)=>VariansExport.renderTitleRange(referenceUnits,sourceUnits,edits,ids,idMap,start,end,titles):null);
  const witnesses=['A',...ids].map(id=>`<witness xml:id="${esc(idMap[id])}">${esc(names[id])}</witness>`).join('');
- return `<?xml version="1.0" encoding="UTF-8"?>\n<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader><fileDesc><titleStmt><title>${esc(t('teiTitle'))}</title></titleStmt><publicationStmt><p>${esc(t('teiExport'))}</p></publicationStmt><sourceDesc><listWit>${witnesses}</listWit></sourceDesc></fileDesc></teiHeader><text><body>${VariansExport.identifyApparatus(body,idMap)}</body></text></TEI>`;
+ return `<?xml version="1.0" encoding="UTF-8"?>\n<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader><fileDesc><titleStmt><title>${esc(t('teiTitle'))}</title></titleStmt><publicationStmt><p>${esc(t('teiExport'))}</p></publicationStmt><sourceDesc><listWit>${witnesses}</listWit></sourceDesc></fileDesc></teiHeader><text><body>${VariansExport.identifyApparatus(body,idMap,apparatusIds)}</body></text></TEI>`;
 }
 function exportTEI(){
  if(!Object.keys(pairResults).length){alert(t('noAlignment'));return}
@@ -1006,6 +1038,7 @@ function captureProject(detach=true){
  const reviews=Object.fromEntries(Object.keys(pairResults).map(id=>[id,currentReview(id)]));
  const state={witnessIds,names:Object.fromEntries(witnessIds.map(id=>[id,names[id]])),rawByWitness:Object.fromEntries(witnessIds.map(id=>[id,rawByWitness[id]])),pairResults,pairReviews:reviews,activeWitness,editedMode,
   language,viewFilter,genre:uniformGenre,genreRanges,titleLines:[...titleLines],
+  ...(apparatusIds.size?{apparatusIds:[...apparatusIds]}:{}),
   iiif:Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||''])),
   imageFiles:Object.fromEntries(witnessIds.map(id=>[id,images[id]?.length?images[id].map(x=>x.name):(projectImageFiles[id]||[])])),
   imageLinks:{...projectImageLinks,...Object.fromEntries(Object.entries(imageOverrides).map(([key,item])=>[key,item.name]))}};
@@ -1025,6 +1058,12 @@ function validateProject(project){
  if(!['en','fr','it'].includes(s.language)||!['all','variants','pending','uncertain'].includes(s.viewFilter)||!['prose','poetry','drama'].includes(s.genre)||typeof s.editedMode!=='boolean')fail();
  if(s.genreRanges!==undefined&&(!Array.isArray(s.genreRanges)||!s.genreRanges.every(r=>obj(r)&&Number.isInteger(r.start)&&Number.isInteger(r.end)&&['prose','poetry','drama'].includes(r.genre))))fail();
  if(s.titleLines!==undefined&&!strings(s.titleLines))fail();
+ if(s.apparatusIds!==undefined){
+  const entries=s.apparatusIds;
+  if(!Array.isArray(entries)||!entries.every(entry=>Array.isArray(entry)&&entry.length===2&&
+   strings(entry)&&/^app-[1-9]\d*$/.test(entry[1])))fail();
+  if(new Map(entries).size!==entries.length||new Set(entries.map(([,id])=>id)).size!==entries.length)fail();
+ }
  const refs=value=>Array.isArray(value)&&value.every(r=>obj(r)&&['page','line','alto_file','image_file','coords','line_text'].every(k=>r[k]===undefined||typeof r[k]==='string'));
  const units=value=>Array.isArray(value)&&value.every(u=>obj(u)&&typeof u.text==='string'&&refs(u.refs));
  for(const id of ids){
@@ -1063,6 +1102,9 @@ function validateProject(project){
 Object.assign(messages.en,{sessionRestored:'Session restored',sessionStorageUnavailable:'Automatic session saving is unavailable. You can still use Save project.'});
 Object.assign(messages.it,{sessionRestored:'Sessione ripristinata',sessionStorageUnavailable:'Il salvataggio automatico non è disponibile. Puoi usare Salva progetto.'});
 Object.assign(messages.fr,{sessionRestored:'Session restaurée',sessionStorageUnavailable:'La sauvegarde automatique est indisponible. Vous pouvez utiliser Enregistrer le projet.'});
+messages.en.sessionImagesUnavailable='Session restored. Reselect the local images to reconnect them.';
+messages.it.sessionImagesUnavailable='Sessione ripristinata. Riseleziona le immagini locali per ricollegarle.';
+messages.fr.sessionImagesUnavailable='Session restaurée. Sélectionnez à nouveau les images locales pour les relier.';
 let sessionDB,sessionKey,sessionSaveScheduled=false,sessionImagesDirty=false,sessionRestoring=true;
 function saveBrowserSession(imagesChanged=false){
  sessionImagesDirty||=imagesChanged;
@@ -1108,11 +1150,15 @@ async function restoreBrowserSession(){
   request.onupgradeneeded=()=>request.result.createObjectStore('sessions');
   sessionDB=await sessionRequest(request);
   const store=sessionDB.transaction('sessions').objectStore('sessions');
-  const [saved,files]=await Promise.all([sessionRequest(store.get(sessionKey)),sessionRequest(store.get(sessionKey+':images'))]);
+  const [savedResult,imageResult]=await Promise.allSettled([
+   sessionRequest(store.get(sessionKey)),sessionRequest(store.get(sessionKey+':images'))
+  ]);
+  if(savedResult.status==='rejected')throw savedResult.reason;
+  const saved=savedResult.value,files=imageResult.value;
   if(!saved)return;
   restoreProject(validateProject(saved.project));
   for(const id of witnessIds){
-   const restored=(files?.[id]||[]).filter(file=>file instanceof File&&projectImageFiles[id].includes(file.name));
+   const restored=(Array.isArray(files?.[id])?files[id]:[]).filter(file=>file instanceof File&&projectImageFiles[id].includes(file.name));
    images[id]=restored.map(file=>({file,name:file.name,url:URL.createObjectURL(file)}));
    for(const [key,name] of Object.entries(projectImageLinks)){
     if(!key.startsWith(id+':'))continue;
@@ -1121,12 +1167,16 @@ async function restoreBrowserSession(){
    }
    if(restored.length)setImageStatus(id,{good:restored.map(file=>file.name),bad:[]});
   }
-  const view=JSON.parse(sessionStorage.getItem('varians-session-view')||'null')||saved.view;
+  let view=saved.view;
+  try{
+   const recent=JSON.parse(sessionStorage.getItem('varians-session-view')||'null');
+   if(['pair','all','focus'].includes(recent?.witnessView))view=recent;
+  }catch{}
   if(Number.isSafeInteger(view?.focusRow)&&view.focusRow>=0)focusRow=view.focusRow;
   $('removeReference').hidden=!rawByWitness.A?.length&&!images.A.length;
- if(['pair','all','focus'].includes(view?.witnessView))setWitnessView(view.witnessView);
+  if(['pair','all','focus'].includes(view?.witnessView))setWitnessView(view.witnessView);
   $('projectStatus').textContent='';
-  $('sessionStatus').textContent=t('sessionRestored');
+  $('sessionStatus').textContent=t(imageResult.status==='rejected'?'sessionImagesUnavailable':'sessionRestored');
  }catch(error){
   $('sessionStatus').textContent=t('sessionStorageUnavailable');
  }finally{
@@ -1157,6 +1207,7 @@ function restoreProject(s){
  $('fileA').value='';$('imagesA').value='';$('dossierNameA').value=names.A;$('dossierNameA').dataset.userEdited='true';
  if($('teiExportDialog').open)$('teiExportDialog').close();teiExportDraft=null;
  setWitnessView('pair',false);focusRow=0;
+ apparatusIds=new Map(s.apparatusIds||[]);
  genreRanges=s.genreRanges||[];uniformGenre=s.genre;titleLines=new Set(s.titleLines||[]);
  language=s.language;$('language').value=language;viewFilter=s.viewFilter;$('resultFilter').value=viewFilter;$('genre').value=s.genre;
  setLanguage(language);

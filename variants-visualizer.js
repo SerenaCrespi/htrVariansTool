@@ -31,14 +31,34 @@ function parseTEI(source) {
 
 function parseJSON(source) {
  const data = JSON.parse(source);
+ const object = value => value && typeof value === 'object' && !Array.isArray(value);
+ const text = value => typeof value === 'string';
+ const optionalText = value => value == null || text(value);
+ const references = value => value === undefined || (Array.isArray(value) && value.every(ref =>
+  object(ref) && text(ref.line) && optionalText(ref.alto_file) && optionalText(ref.page)));
  if (data?.format !== 'varians-collation' || data.version !== 1 ||
-     typeof data.reference?.id !== 'string' || !data.witnesses || !Array.isArray(data.units)) {
+     !text(data.reference?.id) || !optionalText(data.reference.name) ||
+     !object(data.witnesses) || !Array.isArray(data.units)) {
   throw Error('Choose a Varians collation JSON from Export → JSON.');
  }
- return {
-  data,
-  witnesses: new Map([[data.reference.id, data.reference.name], ...Object.entries(data.witnesses)])
- };
+ const witnesses = new Map([[data.reference.id, data.reference.name]]);
+ for (const [id, name] of Object.entries(data.witnesses)) {
+  if (!text(name) || witnesses.has(id)) throw Error('The JSON witness list is invalid.');
+  witnesses.set(id, name);
+ }
+ if (!references(data.structure?.titleLines)) throw Error('The JSON title lines are invalid.');
+ for (const [index, unit] of data.units.entries()) {
+  if (!object(unit?.reference) || !text(unit.reference.text) || !references(unit.reference.sources) ||
+      !object(unit.readings) || !Array.isArray(unit.variants) ||
+      !Object.entries(unit.readings).every(([id, item]) => witnesses.has(id) && object(item) &&
+       Array.isArray(item.segments) && item.segments.every(segment => text(segment?.text))) ||
+      !unit.variants.every(variant => witnesses.has(variant?.witness) &&
+       optionalText(variant.reference) && optionalText(variant.reading) &&
+       ['retained', 'dismissed', 'pending'].includes(variant.status))) {
+   throw Error(`The JSON readings or variants in unit ${index + 1} are invalid.`);
+  }
+ }
+ return {data, witnesses};
 }
 
 function addLocus(base, reading, entries, id = '') {
@@ -294,10 +314,12 @@ byId('export-file').onchange = async event => {
  const file = event.target.files[0];
  if (!file) return;
  const load = ++loadNumber;
+ let previousLoci;
  try {
   const source = (await file.text()).trimStart();
   if (load !== loadNumber) return;
   const next = source.startsWith('<') ? parseTEI(source) : parseJSON(source);
+  previousLoci = loci;
   loci = [];
   const rendered = next.data ? renderJSON(next.data) : renderTEI(next.body);
   edition = next;
@@ -315,8 +337,7 @@ byId('export-file').onchange = async event => {
   refresh();
  } catch (error) {
   if (load !== loadNumber) return;
-  loci = [];
-  content.hidden = byId('toolbar').hidden = details.hidden = byId('stemma').hidden = true;
+  if (previousLoci) loci = previousLoci;
   byId('status').textContent = error instanceof SyntaxError ? 'The JSON file is invalid.' : error.message;
  }
 };

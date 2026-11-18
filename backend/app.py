@@ -781,13 +781,14 @@ def parse_alto_bundle(value, taxonomy: dict | None = None) -> list[dict]:
         name = item.get("name", "") if isinstance(item, dict) else ""
         return [(0, int(part)) if part.isdigit() else (1, part.casefold())
                 for part in re.split(r"(\d+)", name)]
+    if any(not isinstance(item, dict) or not isinstance(item.get("name", ""), str)
+           or not isinstance(item.get("text"), str) for item in value):
+        raise ValueError("Each ALTO file must include a filename and XML text.")
     # Natural filename order keeps page2 before page10 and allows catchword
     # detection to inspect the first line of the next ALTO file.
     items = sorted(value, key=natural_key)
     combined = []
     for position, item in enumerate(items):
-        if not isinstance(item, dict) or not isinstance(item.get("text"), str):
-            raise ValueError("Each ALTO file must include a filename and XML text.")
         following = []
         if position + 1 < len(items):
             try:
@@ -830,6 +831,8 @@ def clean_sentences(value) -> list[dict]:
         refs = item.get("refs", [])
         if not isinstance(refs, list):
             refs = []
+        if any(not isinstance(ref, dict) for ref in refs):
+            raise ValueError(f"Unit {i + 1}: invalid source references.")
         cleaned.append({"text": item["text"], "refs": refs, "index": i + 1})
     return cleaned
 
@@ -962,10 +965,15 @@ class Handler(SimpleHTTPRequestHandler):
             taxonomy = payload.get("taxonomy") if isinstance(payload.get("taxonomy"), dict) else None
             if "alto" in payload:
                 alto = payload["alto"]
+                if not isinstance(alto, dict):
+                    raise ValueError("ALTO witnesses must be provided as an object.")
                 a, b = parse_reference_alto(alto.get("A", []), taxonomy), parse_alto_bundle(alto.get("B", []), taxonomy)
             elif "sentences" in payload:
-                a = clean_sentences(payload["sentences"].get("A"))
-                b = clean_sentences(payload["sentences"].get("B"))
+                sentences = payload["sentences"]
+                if not isinstance(sentences, dict):
+                    raise ValueError("Sentence witnesses must be provided as an object.")
+                a = clean_sentences(sentences.get("A"))
+                b = clean_sentences(sentences.get("B"))
             else:
                 raise ValueError("Request does not contain ALTO files or sentences to align.")
             if not a or not b:

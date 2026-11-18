@@ -141,3 +141,16 @@ test('apparatus IDs are unique across the document and avoid witness IDs',()=>{
  assert.match(xml,/<lem wit="#app-1">/);
  assert.equal(identifyApparatus(body,witnesses),xml);
 });
+
+test('exporting an earlier retained variant preserves an existing apparatus ID',()=>{
+ const {identifyApparatus}=require('../export-support.js');
+ const registry=new Map();
+ const first={id:'B',a0:0,a1:1,tokens:['Altra'],anchor:[0,1,0]};
+ const last={id:'B',a0:7,a1:8,tokens:['canto'],anchor:[7,8,1]};
+ const render=(edits,ids)=>identifyApparatus(renderApparatus(units,edits,['B'],idMap),idMap,ids);
+ assert.match(render([last],registry),/xml:id="app-1"[^>]*><lem[^>]*>della/);
+ const reopened=new Map(JSON.parse(JSON.stringify([...registry])));
+ const xml=render([first,last],reopened);
+ assert.deepEqual([...xml.matchAll(/xml:id="(app-\d+)"/g)].map(match=>match[1]),['app-2','app-1']);
+ assert.doesNotMatch(xml,/data-anchor/);
+});
