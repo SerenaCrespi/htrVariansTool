@@ -80,8 +80,19 @@
 .facsimile-open{border:0;padding:0;background:none;display:block;width:100%;cursor:zoom-in}
 #facsimileDialog{max-width:96vw;max-height:94vh;border:1px solid #d8d1d3;border-radius:8px;background:#fff}
 #facsimileDialog .full-page{max-height:76vh}
+.documentation-link{display:inline-flex;align-items:center;gap:7px;color:#fff5d8;background:transparent;border:1px solid #ffffff55;border-radius:5px;padding:6px 9px;font:inherit;font-size:.72rem;letter-spacing:.06em;cursor:pointer}
+.documentation-link svg{width:18px;height:18px}
+.documentation-link:hover,.documentation-link:focus-visible{background:#ffffff18;border-color:#fff5d8}
+#userGuide{width:min(720px,calc(100% - 24px));max-height:min(84vh,830px);padding:0;border:1px solid var(--line);border-radius:9px;color:var(--ink);background:var(--paper)}
+#userGuide::backdrop{background:#24141888}
+.guide-header{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--paper)}
+.guide-header h2{margin:0;color:var(--forest);font-size:1.25rem}
+.guide-body{padding:4px 20px 16px;line-height:1.6}
+.guide-body h3{margin-bottom:4px;color:var(--forest)}
+.guide-body li{margin-bottom:6px}
+@media(max-width:560px){.topbar-right{gap:6px}.documentation-link{padding:5px;gap:4px;letter-spacing:0;font-size:.64rem}.documentation-link svg{width:14px;height:14px}.guide-body,.guide-header{padding-inline:12px}}
 </style></head><body>
-<header class="navbar"><div class="brand brand-lockup" aria-label="VARIANS"><span class="brand-logo-frame"><img class="varians-logo" src="/assets/varians_transparency.png" alt="VARIANS"></span></div><div class="topbar-right"><span class="project-mark">PRIMA</span><label for="language" class="hide">Language</label><select class="language" id="language" aria-label="Language"><option value="en">English</option><option value="fr">Français</option><option value="it">Italiano</option></select></div></header>
+<header class="navbar"><div class="brand brand-lockup" aria-label="VARIANS"><span class="brand-logo-frame"><img class="varians-logo" src="/assets/varians_transparency.png" alt="VARIANS"></span></div><div class="topbar-right"><button type="button" class="documentation-link" id="openUserGuide" aria-haspopup="dialog" aria-controls="userGuide"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C9.5 4.5 5.5 4 3 5.5v13c2.5-1.5 6.5-1 9 1 2.5-2 6.5-2.5 9-1v-13c-2.5-1.5-6.5-1-9 1Zm0 0v13"/></svg><span>DOCUMENTATION</span></button><label for="language" class="hide">Language</label><select class="language" id="language" aria-label="Language"><option value="en">English</option><option value="fr">Français</option><option value="it">Italiano</option></select></div></header>
 <main class="container">
 <div class="controls" style="margin-bottom:10px"><button type="button" class="btn btn-blue" id="saveProject" data-i18n="saveProject">Save project</button><button type="button" class="btn btn-outline" id="openProject" data-i18n="openProject">Open project</button><input id="projectFile" type="file" accept=".json,application/json" hidden><span id="sessionStatus" class="status-note" role="status"></span><span id="projectStatus" class="status-note" role="status" aria-live="polite"></span></div>
 <p class="status-note" data-i18n="projectHint">Save the complete session to resume later. Local images are not included; reselect them to reconnect.</p>
@@ -92,7 +103,81 @@
 <div class="results-header"><h2 data-i18n="resultsTitle">Collation results</h2><span class="badge badge-blue" id="totalBadge">0 units</span><span class="badge badge-yellow" id="pendingBadge">0 variants to review</span><span class="badge badge-green" id="keptBadge">0 retained</span><button class="btn btn-outline" id="nextPendingBtn" data-i18n="nextPending">Next pending variant</button><div class="export-anchor"><button type="button" class="btn btn-outline" id="exportButton" aria-expanded="false" aria-controls="exportOptions"><span data-i18n="exportMenu">Export</span> <span aria-hidden="true">▾</span></button><div id="exportOptions" hidden><button type="button" class="btn btn-outline" id="exportTei" data-i18n="exportSetup">Export TEI</button><button type="button" class="btn btn-outline" id="exportJson" data-i18n="exportJson">Export decisions JSON</button></div></div><select class="form-control" id="resultFilter" aria-label="Filter collation results"><option value="all" data-i18n="filterAll">All units</option><option value="variants" data-i18n="filterVariants">Units with variants</option><option value="pending" data-i18n="filterPending">Pending review</option><option value="uncertain" data-i18n="filterUncertain">Uncertain alignments</option></select></div>
 <div id="witnessViews" hidden><button type="button" class="btn btn-outline" data-witness-view="pair" data-i18n="pairView" aria-pressed="true">Pair</button><button type="button" class="btn btn-outline" data-witness-view="all" data-i18n="allViews" aria-pressed="false">All witnesses</button><button type="button" class="btn btn-outline" data-witness-view="focus" data-i18n="focusView" aria-pressed="false">Line by line</button></div><div class="controls" id="comparisonControl" hidden><label for="compareWitness" data-i18n="compareReferenceWith">Compare reference with</label><select class="form-control" id="compareWitness"></select></div><div id="results" class="results-list"><div class="empty" data-i18n="empty">Select the reference dossier and at least one other witness to begin.</div></div>
 <footer class="foot"><div class="funding-text" data-i18n="fundingText">This software is developed within the PRIMA project, funded by the European Research Council (ERC).</div><div class="funding-logos"><span class="funding-label" data-i18n="supportedBy">Supported by</span><img class="funding-logo prima" src="/assets/logo_prima.png" alt="PRIMA project logo"><img class="funding-logo erc" src="/assets/logo_erc.png" alt="European Union and European Research Council logos"></div></footer>
-</main><dialog id="teiExportDialog" aria-labelledby="teiExportTitle">
+</main><dialog id="userGuide" aria-labelledby="userGuideTitle">
+ <div class="guide-header">
+  <h2 id="userGuideTitle" data-i18n="guideTitle">User guide</h2>
+  <form method="dialog"><button class="btn btn-outline" data-i18n="close">Close</button></form>
+ </div>
+ <div class="guide-body">
+  <section data-guide-language="en" lang="en">
+   <p>Varians compares ALTO XML transcriptions against a reference witness and lets you review the readings against the facsimiles.</p>
+   <h3>1. Import and align witnesses</h3>
+   <ol>
+    <li>Under <strong>Work &amp; witnesses</strong>, select the ALTO files for the reference witness and enter its name. Use <strong>Add a witness</strong> for each other witness. You can compare up to ten witnesses, including the reference.</li>
+    <li>To see the handwriting alongside the text, select the corresponding page images for each witness. Matching filenames help Varians link images to their ALTO files.</li>
+    <li>The comparison starts as soon as the reference and another witness are available. Use <strong>Align text units</strong> to recalculate. Save a project copy before a recalculation if you have reviewed readings.</li>
+   </ol>
+   <h3>2. Review the collation</h3>
+   <ul>
+    <li><strong>Pair</strong> shows the reference and one selected witness. <strong>All witnesses</strong> keeps the reference on the left and lets you scroll through the other witnesses. <strong>Line by line</strong> shows one unit at a time, with arrows to navigate.</li>
+    <li>Yellow marks a variant awaiting a decision. <strong>Keep</strong> turns it green and includes it in the TEI apparatus. <strong>Ignore</strong> turns it grey and strikes it through. Use <strong>Next pending variant</strong> to continue reviewing.</li>
+    <li>Use <strong>Edit text</strong> to correct a reading and <strong>Adjust alignment</strong> to split or move a fragment. When a witness reading spans several fragments, its controls are under <strong>Review details</strong>. The check mark appears after every variant in that witness card has a decision.</li>
+    <li>Click a facsimile crop to open the whole page. When the ALTO provides coordinates, a red outline identifies the source line.</li>
+   </ul>
+   <h3>3. Save or export</h3>
+   <ul>
+    <li><strong>Save project</strong> downloads a session file for <strong>Open project</strong>. It records the work and the names of the local images, which you can select again after opening the file. Reloading the same browser tab normally restores the local session.</li>
+    <li>Use <strong>Export → TEI</strong> to choose prose, poetry or drama for the whole text or by interval. Use <strong>Title lines</strong> to mark reference lines for export as <code>&lt;head&gt;</code>.</li>
+    <li>Use <strong>Export → JSON</strong> to reuse readings, ALTO references and review decisions in other tools.</li>
+   </ul>
+  </section>
+  <section data-guide-language="fr" lang="fr" hidden>
+   <p>Varians compare des transcriptions ALTO XML à un témoin de référence et permet de vérifier les leçons sur les fac-similés.</p>
+   <h3>1. Importer et aligner les témoins</h3>
+   <ol>
+    <li>Dans <strong>Œuvre et témoins</strong>, sélectionnez les fichiers ALTO du témoin de référence et donnez-lui un nom. Utilisez <strong>Ajouter un témoin</strong> pour chaque autre témoin. Vous pouvez comparer jusqu’à dix témoins, référence comprise.</li>
+    <li>Pour consulter l’écriture avec le texte, sélectionnez les images des pages de chaque témoin. Des noms de fichiers correspondants facilitent l’association avec les fichiers ALTO.</li>
+    <li>Le premier alignement démarre dès que deux témoins sont disponibles. Le bouton d’alignement permet de relancer le calcul. Sauvegardez une copie du projet avant de relancer le calcul si des leçons ont déjà été révisées.</li>
+   </ol>
+   <h3>2. Réviser la collation</h3>
+   <ul>
+    <li><strong>Paire</strong> affiche la référence et un témoin sélectionné. <strong>Tous les témoins</strong> garde la référence à gauche et permet de faire défiler les autres témoins. <strong>Ligne par ligne</strong> affiche une unité à la fois, avec des flèches pour naviguer.</li>
+    <li>Le jaune indique une variante à examiner. <strong>Conserver</strong> la fait passer au vert et l’inclut dans l’apparat TEI. <strong>Écarter</strong> la grise et la barre. Passez à la variante suivante à examiner pour poursuivre la révision.</li>
+    <li>Les commandes de modification du texte et de l’alignement permettent de corriger une leçon, de scinder un fragment ou de le déplacer. Si une leçon comporte plusieurs fragments, ouvrez <strong>Détails de la révision</strong>. Une coche apparaît lorsque toutes les variantes de la fiche du témoin ont été traitées.</li>
+    <li>Cliquez sur le recadrage d’un fac-similé pour afficher la page entière. Un contour rouge repère la ligne si les coordonnées ALTO sont disponibles.</li>
+   </ul>
+   <h3>3. Enregistrer ou exporter</h3>
+   <ul>
+    <li>Enregistrez le projet pour télécharger un fichier de session que vous pourrez rouvrir dans Varians. Le fichier conserve le travail et les noms des images locales, que vous pouvez sélectionner à nouveau après l’ouverture. Un rafraîchissement du même onglet rétablit normalement la session locale.</li>
+    <li>Dans le menu d’export <strong>TEI</strong>, choisissez la prose, la poésie ou le théâtre pour tout le texte ou par intervalles. Dans <strong>Lignes de titre</strong>, sélectionnez les lignes de référence à encoder en <code>&lt;head&gt;</code>.</li>
+    <li>L’export <strong>JSON</strong> permet de réutiliser les leçons, les références ALTO et les décisions de révision dans d’autres outils.</li>
+   </ul>
+  </section>
+  <section data-guide-language="it" lang="it" hidden>
+   <p>Varians confronta trascrizioni ALTO XML con un testimone di riferimento e permette di verificare le letture sui facsimili.</p>
+   <h3>1. Importa e allinea i testimoni</h3>
+   <ol>
+    <li>In <strong>Opera e testimoni</strong>, seleziona i file ALTO del riferimento e assegna un nome al testimone. Usa <strong>Aggiungi un testimone</strong> per ciascun altro testimone. Puoi confrontarne fino a dieci, riferimento incluso.</li>
+    <li>Per consultare la scrittura insieme al testo, seleziona le immagini delle pagine di ciascun testimone. I nomi di file corrispondenti aiutano Varians ad associare le immagini agli ALTO.</li>
+    <li>Il primo allineamento parte quando sono disponibili il riferimento e almeno un altro testimone. Usa il pulsante di allineamento per ricalcolare. Se hai già preso decisioni editoriali, salva una copia del progetto prima del ricalcolo.</li>
+   </ol>
+   <h3>2. Rivedi la collazione</h3>
+   <ul>
+    <li><strong>Coppia</strong> mostra il riferimento e un testimone selezionato. <strong>Tutti i testimoni</strong> tiene il riferimento a sinistra e permette di scorrere gli altri. <strong>Riga per riga</strong> mostra una sola unità alla volta e usa le frecce per passare alla precedente o alla successiva.</li>
+    <li>Il giallo segnala una variante da rivedere. <strong>Conserva</strong> la colora di verde e la include nell’apparato TEI. <strong>Ignora</strong> la rende grigia e barrata. Passa alla prossima variante da esaminare per proseguire.</li>
+    <li>Usa i comandi di modifica del testo e dell’allineamento per correggere una lettura, dividere un frammento o spostarlo. Quando una lettura comprende più frammenti, apri <strong>Dettagli della revisione</strong>. La spunta appare quando hai deciso tutte le varianti della scheda del testimone.</li>
+    <li>Clicca sul ritaglio del facsimile per vedere la pagina intera. Se l’ALTO contiene le coordinate, un contorno rosso individua la riga.</li>
+   </ul>
+   <h3>3. Salva o esporta</h3>
+   <ul>
+    <li><strong>Salva progetto</strong> scarica un file da riaprire con <strong>Apri progetto</strong>. Il file conserva il lavoro e i nomi delle immagini locali, che puoi selezionare di nuovo quando lo riapri. Ricaricando la stessa scheda del browser, normalmente si ripristina la sessione locale.</li>
+    <li>Nel menu di esportazione <strong>TEI</strong>, scegli prosa, poesia o teatro per l’intero testo o per intervalli. In <strong>Righe di titolo</strong>, seleziona le righe del riferimento da esportare come <code>&lt;head&gt;</code>.</li>
+    <li>Usa l’esportazione <strong>JSON</strong> per riutilizzare letture, riferimenti ALTO e decisioni editoriali in altri strumenti.</li>
+   </ul>
+  </section>
+ </div>
+</dialog>
+<dialog id="teiExportDialog" aria-labelledby="teiExportTitle">
 <div class="iiif-head"><span id="teiExportTitle" data-i18n="exportSetup">Export TEI</span><button type="button" class="btn btn-outline" id="cancelTeiExport" data-i18n="cancel">Cancel</button></div>
 <p data-i18n="exportSetupHint">Choose one genre for the whole text, or define intervals for mixed prose, poetry and drama.</p>
 <div class="tei-export-modes"><label><input type="radio" name="teiMode" value="uniform" id="teiUniform"> <span data-i18n="wholeTextGenre">One genre for the whole text</span></label><label><input type="radio" name="teiMode" value="mixed" id="teiMixed"> <span data-i18n="intervalGenres">Different genres by interval</span></label></div>
@@ -101,4 +186,4 @@
 <details id="teiTitleLines"><summary data-i18n="titleLines">Title lines</summary><p class="hint" data-i18n="titleLinesHint">Select the reference lines to export as TEI headings.</p><div id="titleLineOptions"></div></details>
 <p id="witnessExportIds" class="status-note"></p><p id="teiExportError" role="alert"></p>
 <div class="controls"><button type="button" class="btn btn-green" id="confirmTeiExport" data-i18n="downloadTei">Download TEI</button></div>
-</dialog><div id="alignmentToast" hidden><span aria-hidden="true">✓</span><strong id="alignmentToastMessage" role="status"></strong><button type="button" class="btn btn-outline" id="dismissAlignmentToast" data-i18n="close">Close</button></div><dialog id="facsimileDialog" aria-labelledby="facsimileDialogTitle"><div class="iiif-head"><strong id="facsimileDialogTitle" data-i18n="fullPage">Page context</strong><button type="button" class="btn btn-outline" id="closeFacsimile" data-i18n="close">Close</button></div><div id="facsimilePage"></div></dialog><div id="modal"></div><script src="/export-support.js?v=20261118-export-alignment" defer></script><script src="/frontend.js?v=20261118-fast-review" defer></script></body></html>
+</dialog><div id="alignmentToast" hidden><span aria-hidden="true">✓</span><strong id="alignmentToastMessage" role="status"></strong><button type="button" class="btn btn-outline" id="dismissAlignmentToast" data-i18n="close">Close</button></div><dialog id="facsimileDialog" aria-labelledby="facsimileDialogTitle"><div class="iiif-head"><strong id="facsimileDialogTitle" data-i18n="fullPage">Page context</strong><button type="button" class="btn btn-outline" id="closeFacsimile" data-i18n="close">Close</button></div><div id="facsimilePage"></div></dialog><div id="modal"></div><script src="/export-support.js?v=20261118-export-alignment" defer></script><script src="/frontend.js?v=20261118-user-guide" defer></script></body></html>

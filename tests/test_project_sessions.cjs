@@ -728,3 +728,26 @@ test('multi-witness grouping keeps an addition between its neighboring ALTO read
   assert.equal(await page.locator('.multi-row').count(),1);
  }finally{await page.close()}
 });
+
+test('the documentation button opens the guide in the selected language',async()=>{
+ const page=await browser.newPage({viewport:{width:390,height:780}});
+ try{
+  await page.goto(url);
+  const button=page.getByRole('button',{name:'DOCUMENTATION',exact:true});
+  for(const [language,title,section] of [
+   ['en','User guide','Import and align witnesses'],
+   ['fr','Guide utilisateur','Importer et aligner les témoins'],
+   ['it','Guida utente','Importa e allinea i testimoni'],
+  ]){
+   await page.locator('#language').selectOption(language);
+   await button.click();
+   const guide=page.getByRole('dialog',{name:title});
+   assert.equal(await guide.getByRole('heading',{name:new RegExp(section)}).count(),1);
+   assert.equal(await guide.locator('[data-guide-language]:visible').count(),1);
+   assert.equal(await guide.locator('[data-guide-language]:visible').getAttribute('lang'),language);
+   await page.keyboard.press('Escape');
+   assert.equal(await guide.isVisible(),false);
+  }
+  assert.equal(await page.locator('#language').inputValue(),'it');
+ }finally{await page.close()}
+});
