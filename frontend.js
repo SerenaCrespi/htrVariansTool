@@ -176,7 +176,35 @@ function wordDiff(a,b){
  }
  return{aa,bb,diff}
 }
-function compareUnit(a,b){if(!a.trim()&&b.trim()){let t=b.split(/\s+/).filter(Boolean);return{aa:[],bb:t.map(t=>({t,c:'var',v:0})),diff:[{a:'∅',b}]}}if(a.trim()&&!b.trim()){let t=a.split(/\s+/).filter(Boolean);return{aa:t.map(t=>({t,c:'var',v:0})),bb:[],diff:[{a,b:'∅'}]}}return wordDiff(a,b)}
+function compareUnit(a,b,spacingMatches=[]){if(!a.trim()&&b.trim()){let t=b.split(/\s+/).filter(Boolean);return{aa:[],bb:t.map(t=>({t,c:'var',v:0})),diff:[{a:'∅',b}]}}if(a.trim()&&!b.trim()){let t=a.split(/\s+/).filter(Boolean);return{aa:t.map(t=>({t,c:'var',v:0})),bb:[],diff:[{a,b:'∅'}]}}return spacingMatches.length?diffWithSpacing(a,b,spacingMatches):wordDiff(a,b)}
+function diffWithSpacing(a,b,matches){
+ const left=a.split(/\s+/).filter(Boolean),right=b.split(/\s+/).filter(Boolean);
+ const result={aa:[],bb:[],diff:[]};
+ let x=0,y=0;
+ function appendGap(endX,endY){
+  const gap=wordDiff(left.slice(x,endX).join(' '),right.slice(y,endY).join(' '));
+  const offset=result.diff.length;
+  for(const side of ['aa','bb'])for(const token of gap[side])
+   result[side].push(token.c==='var'?{...token,v:token.v+offset}:token);
+  result.diff.push(...gap.diff);
+ }
+ for(const [startX,countX,startY,countY] of matches){
+  if(startX<x||startY<y||startX+countX>left.length||startY+countY>right.length)return wordDiff(a,b);
+  appendGap(startX,startY);
+  x=startX+countX;
+  y=startY+countY;
+  for(const token of left.slice(startX,x))result.aa.push({t:token,c:'same'});
+  for(const token of right.slice(startY,y))result.bb.push({t:token,c:'same'});
+ }
+ appendGap(left.length,right.length);
+ return result;
+}
+function comparisonRows(){
+ const all=witnessRows(true).map((row,index)=>({...row,index,entries:row.entries.map(witnessEntryReview)}));
+ const visible=all.filter(row=>viewFilter==='all'||row.entries.some(entry=>
+  viewFilter==='variants'?entry.diff.diff.length:viewFilter==='pending'?entry.pending:entry.uncertain));
+ return {all,visible};
+}
 function renderAlignmentProgress(){
  const stages=[...alignmentJobs].flat();
  if(!stages.length)return;
@@ -283,22 +311,27 @@ function render(){
  $('witnessViews').hidden=!groups.length;
  if(witnessView!=='pair'&&groups.length){renderWitnessComparison();return}
  if(!groups.length){$('results').innerHTML=`<div class="empty">${t('noAlignment')}</div>`;return}
- let html='',total=0,kept=0,pending=0,shown=0;
- groups.forEach((g,idx)=>{
-  const aa=groupItems(A,g,'A'),bb=groupItems(B,g,'B'),at=groupText(A,g,'A'),bt=groupText(B,g,'B'),d=compareUnit(at,bt),state=decisions[idx]||{},conf=Number(g.similarity||0),uncertain=!!(g.semantic_review||g.lexical_review||(at&&bt&&conf<.45));
-  total+=d.diff.length;
-  for(let k=0;k<d.diff.length;k++){if(state[k]==='keep')kept++;else if(!state[k])pending++}
-  const hasPending=d.diff.some((_,k)=>!state[k]);
-  const visible=viewFilter==='all'||(viewFilter==='variants'&&d.diff.length>0)||(viewFilter==='pending'&&hasPending)||(viewFilter==='uncertain'&&uncertain);
-  if(!visible)return;
-  shown++;
+ const {all,visible}=comparisonRows();
+ const entries=all.flatMap(row=>row.entries.filter(entry=>entry.id===activeWitness));
+ const total=entries.reduce((sum,entry)=>sum+entry.diff.diff.length,0);
+ const pending=entries.reduce((sum,entry)=>sum+entry.pending,0);
+ const kept=entries.reduce((sum,entry)=>sum+entry.kept,0);
+ const segment=(entry,label)=>{
+ const {index:idx,left:aa,right:bb,diff:d,group:g,uncertain}=entry;
+ const state=decisions[idx]||{},conf=Number(g.similarity||0);
   const allDone=d.diff.length&&d.diff.every((_,k)=>state[k]);
   const vbadge=d.diff.length?(allDone?`<span class="vbadge done">✓ ${d.diff.length} ${t('variant')}</span>`:`<span class="vbadge">${d.diff.length} ${t('variant')}</span>`):`<span class="vbadge done">✓ ${t('aligned')}</span>`;
   const tag=uncertain?`<span class="status-note">${t('needsReview')}</span>`:'';
-  html+=`<article class="verse-row" id="unit-${idx}" data-unit="${idx}"><div class="verse-num"><span>${idx+1}</span>${vbadge}${tag}</div><div class="witnesses">${rowHTML('A',aa,d.aa,idx)}${rowHTML('B',bb,d.bb,idx)}</div><div class="row-actions">${d.diff.length?`<button class="btn btn-secondary" onclick="setAll(${idx},'ignore')">${t('ignore')}</button><button class="btn btn-green" onclick="setAll(${idx},'keep')">${t('keep')}</button>`:''}<button class="btn btn-blue edit" onclick="editUnit(${idx})">${t('editText')}</button><button class="btn btn-outline edit" onclick="adjustUnit(${idx})">${t('adjustAlignment')}</button></div>${d.diff.length?`<div class="variant-line"><span class="variant-label">${t('variants')} · ${conf.toFixed(2)} ${t('similarity')}</span>${d.diff.map((v,k)=>`<span class="variant-item"><b>${esc(v.a)} → ${esc(v.b)}</b><button class="btn btn-light keepmini ${state[k]==='keep'?'chosen':''}" onclick="setVariant(${idx},${k},'keep')">${t('keep')}</button><button class="btn btn-light ignoremini ${state[k]==='ignore'?'chosen':''}" onclick="setVariant(${idx},${k},'ignore')">${t('ignore')}</button></span>`).join('')}</div>`:''}</article>`;
- });
- $('results').innerHTML=html||`<div class="empty">${t('noFilterMatches')}</div>`;
- $('totalBadge').textContent=t('unitCount',{n:shown,total:groups.length});
+  return `<div class="verse-row" id="unit-${idx}" data-unit="${idx}"><div class="verse-num"><span>${label}</span>${vbadge}${tag}</div><div class="witnesses">${rowHTML('A',aa,d.aa,idx)}${rowHTML('B',bb,d.bb,idx)}</div><div class="row-actions">${d.diff.length?`<button class="btn btn-secondary" onclick="setAll(${idx},'ignore')">${t('ignore')}</button><button class="btn btn-green" onclick="setAll(${idx},'keep')">${t('keep')}</button>`:''}<button class="btn btn-blue edit" onclick="editUnit(${idx})">${t('editText')}</button><button class="btn btn-outline edit" onclick="adjustUnit(${idx})">${t('adjustAlignment')}</button></div>${d.diff.length?`<div class="variant-line"><span class="variant-label">${t('variants')} · ${conf.toFixed(2)} ${t('similarity')}</span>${d.diff.map((v,k)=>`<span class="variant-item"><b>${esc(v.a)} → ${esc(v.b)}</b><button class="btn btn-light keepmini ${state[k]==='keep'?'chosen':''}" onclick="setVariant(${idx},${k},'keep')">${t('keep')}</button><button class="btn btn-light ignoremini ${state[k]==='ignore'?'chosen':''}" onclick="setVariant(${idx},${k},'ignore')">${t('ignore')}</button></span>`).join('')}</div>`:''}</div>`;
+ };
+ $('results').innerHTML=visible.map(row=>{
+  const segments=row.entries.filter(entry=>entry.id===activeWitness);
+  const label=row.index+1;
+  const contents=segments.length?segments.map((entry,index)=>segment(entry,segments.length>1?`${label}.${index+1}`:label)).join(''):
+   `<div class="verse-row"><div class="verse-num">${label}</div><div class="witnesses"><div class="textline">${esc(row.reference.map(item=>item.text).join(' '))||'—'}</div><div class="textline"><em>${t('noPassage')}</em></div></div></div>`;
+  return `<article class="pair-shared-unit" data-shared-unit="${label}">${contents}</article>`;
+ }).join('')||`<div class="empty">${t('noFilterMatches')}</div>`;
+ $('totalBadge').textContent=t('unitCount',{n:visible.length,total:all.length});
  $('pendingBadge').textContent=t('pending',{n:pending,total});
  $('keptBadge').textContent=t('retained',{n:kept});
 }
@@ -375,16 +408,16 @@ function witnessRows(includeInteriorInsertions=false){
 function witnessEntryReview(entry){
  const {id,index,left,right,group}=entry,review=currentReview(id).decisions;
  const read=items=>items.map(item=>item.text).filter(Boolean).join(' ');
- const diff=compareUnit(read(left),read(right));
+ const diff=compareUnit(read(left),read(right),group.spacing_matches);
  return {...entry,review,diff,pending:diff.diff.filter((_,k)=>!review[index]?.[k]).length,
   kept:diff.diff.filter((_,k)=>review[index]?.[k]==='keep').length,
   uncertain:!!(group.semantic_review||group.lexical_review||(left.length&&right.length&&group.similarity<.45))};
 }
-function witnessReading(entry,showReference){
+function witnessReading(entry,showReference,label){
  const {id,index,left,right,review,diff}=entry,state=review[index]||{};
  const action=(method,label,classes)=>`<button type="button" class="btn ${classes}" onclick="reviewWitnessAction('${id}',${index},'${method}')">${t(label)}</button>`;
  return `<section class="multi-reading" data-pair-unit="${index+1}">
- <div class="segment-heading"><button type="button" class="pair-unit-link" onclick="reviewWitnessAction('${id}',${index},'pair')">${t('pairView')} · ${t('unitLabel',{n:index+1})}</button>${entry.uncertain?`<span class="status-note">${t('needsReview')}</span>`:''}</div>
+ <div class="segment-heading"><button type="button" class="pair-unit-link" onclick="reviewWitnessAction('${id}',${index},'pair')">${t('pairView')} · ${t('unitLabel',{n:label})}</button>${entry.uncertain?`<span class="status-note">${t('needsReview')}</span>`:''}</div>
  ${showReference?`<div class="textline segment-reference"><span class="status-note">${t('pairReference')}</span><br>${left.length?renderText(diff.aa,index,review):`<em>${t('noPassage')}</em>`}</div>`:''}
  <div class="textline">${right.length?renderText(diff.bb,index,review):`<em>${t('noPassage')}</em>`}<div class="status-note">${esc(refs(right))}</div></div>
  ${diff.diff.length?`<div class="controls">${diff.diff.map((variant,k)=>`<span class="variant-item"><b>${esc(variant.a)} → ${esc(variant.b)}</b>
@@ -520,10 +553,8 @@ function renderWitnessImages(rows,sources){
  for(const target of pending.keys())observer.observe(target);
 }
 function renderWitnessComparison(){
- const all=witnessRows(true).map((row,index)=>({...row,index,entries:row.entries.map(witnessEntryReview)}));
+ const {all,visible}=comparisonRows();
  const entries=all.flatMap(row=>row.entries);
- const visible=all.filter(row=>viewFilter==='all'||row.entries.some(entry=>
-  viewFilter==='variants'?entry.diff.diff.length:viewFilter==='pending'?entry.pending:entry.uncertain));
  $('totalBadge').textContent=t('unitCount',{n:visible.length,total:all.length});
  $('pendingBadge').textContent=t('pending',{n:entries.reduce((n,e)=>n+e.pending,0),total:entries.reduce((n,e)=>n+e.diff.diff.length,0)});
  $('keptBadge').textContent=t('retained',{n:entries.reduce((n,e)=>n+e.kept,0)});
@@ -545,7 +576,7 @@ function renderWitnessComparison(){
   ${ids.map(id=>{
    const readings=row.entries.filter(entry=>entry.id===id);
    const pairText=readings.flatMap(entry=>entry.left).map(item=>item.text).join(' ');
-   return card(id,readings.length?readings.map(entry=>witnessReading(entry,readings.length>1||pairText!==referenceText)).join(''):
+   return card(id,readings.length?readings.map((entry,index)=>witnessReading(entry,readings.length>1||pairText!==referenceText,readings.length>1?`${row.index+1}.${index+1}`:row.index+1)).join(''):
     `<div class="multi-reading textline"><em>${t('noPassage')}</em></div>`);
   }).join('')}</div></div>`;
  };
@@ -564,7 +595,7 @@ function renderWitnessComparison(){
  focusRow=row.index;
  $('results').innerHTML=`<article class="multi-row" id="witness-unit-${row.index}">
  <nav class="focus-nav"><button type="button" class="btn btn-outline" aria-label="${t('previousLine')}" ${position===0?'disabled':''} data-direction="previous" onclick="jumpWitnessRow(${visible[position-1]?.index??0},this.dataset.direction)">←</button>
- <strong>${t('linePosition',{n:position+1,total:visible.length})}</strong>
+ <strong>${t('linePosition',{n:row.index+1,total:all.length})}</strong>
  <button type="button" class="btn btn-outline" aria-label="${t('nextLine')}" ${position===visible.length-1?'disabled':''} data-direction="next" onclick="jumpWitnessRow(${visible[position+1]?.index??0},this.dataset.direction)">→</button></nav>
  <div id="focusEditor"></div>${text(row)}</article>`;
  showImages([row]);
@@ -590,7 +621,7 @@ function rowHTML(which,arr,tokens,idx){
  return `<div class="witness-line"><div class="witness-label">${esc(names[id])}${firstRef?` <a class="page-link" onclick="openImages(${idx})">${esc(firstRef.page||'p.?')}</a>`:''}</div><div class="textline">${line}<div class="status-note">${esc(source)}</div></div></div>`
 }
 function setVariant(i,k,action){decisions[i]=decisions[i]||{};decisions[i][k]=action;render()}
-function setAll(i,action){let g=groups[i],d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B'));decisions[i]=decisions[i]||{};d.diff.forEach((_,k)=>decisions[i][k]=action);render()}
+function setAll(i,action){let g=groups[i],d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B'),g.spacing_matches);decisions[i]=decisions[i]||{};d.diff.forEach((_,k)=>decisions[i][k]=action);render()}
 function closeTextEditor(){
  const editor=$('focusEditor');
  if(editor?.firstElementChild)editor.innerHTML='';
@@ -622,6 +653,7 @@ async function saveEdit(i){
  }
  if(aa!==previousA){const items=groupItems(A,g,'A');g.originalA??=items;g.aItems=revisedItems(items,aa)}
  if(bb!==previousB){const items=groupItems(B,g,'B');g.originalB??=items;g.bItems=revisedItems(items,bb)}
+ delete g.spacing_matches;
  g.similarity=aa&&bb?similarityClient(aa,bb):0;
  pairResults[activeWitness].alignments=groups;
  decisions={...decisions};delete decisions[i];
@@ -639,7 +671,7 @@ function updateDraftPositions(){const target=Number($('moveTarget').value);$('mo
 function renderAdjustUnit(){if(!alignmentDraft)return;const i=alignmentDraft.index,g=alignmentDraft.groups[i],side=alignmentDraft.sourceSide,sourceOptions=draftSourceOptions(),targetOptions=draftTargetOptions(),positionOptions=draftPositionOptions(i),left=groupText(A,g,'A')||'—',right=groupText(B,g,'B')||'—',aSelected=side==='A'?' selected':'',bSelected=side==='B'?' selected':'';$('modal').innerHTML=`<div class="iiif-modal"><div class="iiif-box" style="max-width:1000px;max-height:92vh;overflow:auto"><div class="iiif-head"><span>${t('adjustTitle',{n:i+1})}</span><button class="btn btn-outline" onclick="alignmentDraft=null;$('modal').innerHTML=''">${t('close')}</button></div><p class="status-note">${t('adjustHint')}</p><div class="adjust-preview"><section class="adjust-reading${aSelected}" role="button" tabindex="0" aria-pressed="${side==='A'}" onclick="selectDraftSide('A')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectDraftSide('A')}"><h3>${esc(names.A)} · ${esc(t('clickToMove'))}</h3><div class="textline">${esc(left)}</div></section><section class="adjust-reading${bSelected}" role="button" tabindex="0" aria-pressed="${side==='B'}" onclick="selectDraftSide('B')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectDraftSide('B')}"><h3>${esc(names[activeWitness])} · ${esc(t('clickToMove'))}</h3><div class="textline">${esc(right)}</div></section></div><section class="adjust-section"><h3>${t('moveSourceHeading')} · ${esc(names[side==='A'?'A':activeWitness])}</h3><div class="adjust-actions"><label class="status-note">${t('selectSourceLine')}<select id="moveSource" class="form-control" style="width:100%;margin-top:4px">${sourceOptions||`<option value="">${t('noLinesLeft')}</option>`}</select></label><label class="status-note">${t('selectTargetUnit')}<select id="moveTarget" class="form-control" style="width:100%;margin-top:4px" onchange="updateDraftPositions()">${targetOptions}</select></label><label class="status-note">${t('selectPosition')}<select id="movePosition" class="form-control" style="width:100%;margin-top:4px">${positionOptions}</select></label></div><div class="controls" style="margin-top:10px"><button class="btn btn-blue" onclick="moveDraftLine()">${t('moveLine')}</button></div><details style="margin-top:12px"><summary class="status-note" style="cursor:pointer">${t('splitLine')}</summary><div class="controls" style="margin-top:8px"><input id="splitMarker" class="form-control" type="text" placeholder="${t('splitPlaceholder')}" style="min-width:260px"><button class="btn btn-outline" onclick="splitDraftLine()">${t('splitSelected')}</button></div><p class="status-note adjust-help">${t('splitHint')}</p></details></section><div id="alignmentEditError" class="status-note" role="alert"></div><div class="controls" style="margin-top:14px"><button class="btn btn-green" onclick="saveAdjustedUnit()">${t('saveAlignment')}</button><button class="btn btn-outline" onclick="alignmentDraft=null;$('modal').innerHTML=''">${t('cancel')}</button></div></div></div>`}
 function splitDraftLine(){const selected=$('moveSource').value,marker=$('splitMarker').value;if(!selected||!marker){$('alignmentEditError').textContent=t('splitNeedMarker');return}const side=alignmentDraft.sourceSide,[gi,ii]=selected.split(':').map(Number),items=draftItems(alignmentDraft.groups[gi],side),item=items[ii],at=item?.text.indexOf(marker);if(!item||at<0){$('alignmentEditError').textContent=t('splitMarkerMissing');return}const cut=at+marker.length,left=item.text.slice(0,cut).trim(),right=item.text.slice(cut).trim();if(!left||!right){$('alignmentEditError').textContent=t('splitEmptyPart');return}const makePart=text=>({...cloneLineItem(item),text,refs:(item.refs||[]).map(ref=>({...ref,line_text:text}))});items.splice(ii,1,makePart(left),makePart(right));$('alignmentEditError').textContent='';renderAdjustUnit();$('moveSource').value=`${gi}:${ii+1}`}
 function moveDraftLine(){const selected=$('moveSource').value,target=Number($('moveTarget').value),positionValue=$('movePosition').value;if(!selected||!Number.isInteger(target)){ $('alignmentEditError').textContent=t('selectLineAndTarget');return}const side=alignmentDraft.sourceSide,[from,at]=selected.split(':').map(Number),items=draftItems(alignmentDraft.groups[from],side),[item]=items.splice(at,1);if(!item){$('alignmentEditError').textContent=t('selectLineAndTarget');return}const destination=draftItems(alignmentDraft.groups[target],side);let position=positionValue==='start'?0:positionValue==='end'?destination.length:Number(positionValue.split(':')[1])+1;if(from===target&&at<position)position--;destination.splice(Math.max(0,Math.min(position,destination.length)),0,item);alignmentDraft.index=target;$('alignmentEditError').textContent='';renderAdjustUnit()}
-function saveAdjustedUnit(){const previousGroups=groups,previousDecisions=decisions,next=alignmentDraft.groups.map((g,i)=>{const left=groupText(A,g,'A'),right=groupText(B,g,'B');return {...g,id:i,similarity:left&&right?similarityClient(left,right):0}}),nextDecisions=preserveDecisionsByKey(previousGroups,next,previousDecisions);groups=next;pairResults[activeWitness].alignments=next;alignmentDraft=null;decisions=nextDecisions;pairReviews[activeWitness]={decisions,movementDecisions};render();renderMovements();$('loadedStatus').textContent+=' · '+t('manualSaved');$('modal').innerHTML=''}
+function saveAdjustedUnit(){const previousGroups=groups,previousDecisions=decisions,next=alignmentDraft.groups.map((g,i)=>{const left=groupText(A,g,'A'),right=groupText(B,g,'B');const updated={...g,id:i,similarity:left&&right?similarityClient(left,right):0};if(alignmentGroupKey(g)!==alignmentGroupKey(previousGroups[i]))delete updated.spacing_matches;return updated}),nextDecisions=preserveDecisionsByKey(previousGroups,next,previousDecisions);groups=next;pairResults[activeWitness].alignments=next;alignmentDraft=null;decisions=nextDecisions;pairReviews[activeWitness]={decisions,movementDecisions};render();renderMovements();$('loadedStatus').textContent+=' · '+t('manualSaved');$('modal').innerHTML=''}
 function similarityClient(a,b){const x=tokenKey(a).split('').join(' '),y=tokenKey(b).split('').join(' ');if(!x&&!y)return 1;if(!x||!y)return 0;let prev=Array.from({length:y.length+1},(_,i)=>i);for(let i=1;i<=x.length;i++){const cur=[i];for(let j=1;j<=y.length;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(x[i-1]===y[j-1]?0:1));prev=cur}return Math.max(0,1-prev[y.length]/Math.max(x.length,y.length))}
 function resolveImage(which,ref){return resolveWitnessImage(which==='B'?activeWitness:which,ref)}
 function resolveWitnessImage(id,ref){
@@ -681,7 +713,7 @@ resolve(canvas.toDataURL('image/png'))}catch(e){reject(e)}};image.onerror=()=>re
 async function sourceLineCard(which,ref){const id=which==='B'?activeWitness:which,item=chooseImage(which,ref);let crop=null;if(item&&ref)try{crop=await cropLine(item.url,ref)}catch(e){}const text=ref?.line_text||t('notAvailable');return `<figure class="source-line-card"><figcaption><b>${esc(names[id])}</b><span>${esc(ref?`${ref.alto_file||''} · ${t('page')} ${ref.page} · ${t('line')} ${ref.line}`:'')}</span></figcaption>${crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref?.page||'')}">`:`<div class="no-image">${t('missingImage')}</div>`}${item?`<details class="full-page-details"><summary>${t('fullPage')}</summary>${pageWithOutline(item.url,ref)}</details>`:''}<div class="image-reading">${esc(text)}</div></figure>`}
 async function openImages(unitIndex){const g=groups[unitIndex],ra=groupItems(A,g,'A').flatMap(x=>x.refs||[]),rb=groupItems(B,g,'B').flatMap(x=>x.refs||[]);await renderImageCompare(t('lineCompare',{n:unitIndex+1}),ra,rb)}async function renderImageCompare(title,ra,rb){const modal=$('modal');modal.innerHTML=`<div class="iiif-modal"><div class="iiif-box image-compare"><div class="iiif-head"><span>${esc(title)}</span><button class="btn btn-outline" onclick="$('modal').innerHTML=''">${t('close')}</button></div><div class="line-compare"><section class="line-witness"><h3>${esc(names.A)} <small>${t('rows',{n:ra.length})}</small></h3><div id="lineA"></div></section><section class="line-witness"><h3>${esc(names[activeWitness])} <small>${t('rows',{n:rb.length})}</small></h3><div id="lineB"></div></section></div><p class="crop-note">${t('cropNote')}</p></div></div>`;const [cardsA,cardsB]=await Promise.all([Promise.all(ra.map(r=>sourceLineCard('A',r))),Promise.all(rb.map(r=>sourceLineCard('B',r)))]);if(!document.getElementById('lineA'))return;$('lineA').innerHTML=cardsA.join('')||`<div class="no-image">${t('noPassageIn',{w:'A'})}</div>`;$('lineB').innerHTML=cardsB.join('')||`<div class="no-image">${t('noPassageIn',{w:'B'})}</div>`}
 function currentReview(id){return id===activeWitness?{decisions,movementDecisions}:pairReviews[id]||{decisions:{},movementDecisions:{}}}
-function selectedVariantEdits(id){const pair=pairResults[id];if(!pair)return[];const state=currentReview(id).decisions||{},out=[];let offset=0;for(let gi=0;gi<pair.alignments.length;gi++){const g=pair.alignments[gi],left=groupText(pair.A,g,'A'),right=groupText(pair.B,g,'B'),d=compareUnit(left,right),selected=new Set(Object.entries(state[gi]||{}).filter(([,v])=>v==='keep').map(([k])=>Number(k)));for(const k of selected){const aPos=[];d.aa.forEach((x,pos)=>{if(x.c==='var'&&x.v===k)aPos.push(pos)});const bTokens=d.bb.filter(x=>x.c==='var'&&x.v===k).map(x=>x.t);let start=aPos.length?aPos[0]:d.aa.findIndex(x=>x.c==='var'&&x.v>k);if(start<0)start=d.aa.length;const end=aPos.length?aPos[aPos.length-1]+1:start;out.push({id,a0:offset+start,a1:offset+end,tokens:bTokens,group:gi,variant:k})}offset+=left.split(/\s+/).filter(Boolean).length}return out}
+function selectedVariantEdits(id){const pair=pairResults[id];if(!pair)return[];const state=currentReview(id).decisions||{},out=[];let offset=0;for(let gi=0;gi<pair.alignments.length;gi++){const g=pair.alignments[gi],left=groupText(pair.A,g,'A'),right=groupText(pair.B,g,'B'),d=compareUnit(left,right,g.spacing_matches),selected=new Set(Object.entries(state[gi]||{}).filter(([,v])=>v==='keep').map(([k])=>Number(k)));for(const k of selected){const aPos=[];d.aa.forEach((x,pos)=>{if(x.c==='var'&&x.v===k)aPos.push(pos)});const bTokens=d.bb.filter(x=>x.c==='var'&&x.v===k).map(x=>x.t);let start=aPos.length?aPos[0]:d.aa.findIndex(x=>x.c==='var'&&x.v>k);if(start<0)start=d.aa.length;const end=aPos.length?aPos[aPos.length-1]+1:start;out.push({id,a0:offset+start,a1:offset+end,tokens:bTokens,group:gi,variant:k})}offset+=left.split(/\s+/).filter(Boolean).length}return out}
 function exportReferenceUnits(){
  const pair=pairResults[Object.keys(pairResults)[0]];
  return pair?pair.alignments.map(g=>({text:groupText(pair.A,g,'A'),items:groupItems(pair.A,g,'A'),refs:groupItems(pair.A,g,'A').flatMap(item=>item.refs||[])})):[];
@@ -845,8 +877,8 @@ function nextPending(){
   $(`witness-unit-${next.index}`)?.scrollIntoView({block:'center'});
   return;
  }
- let index=groups.findIndex((g,i)=>{const d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B')).diff;return d.some((_,k)=>!decisions[i]?.[k])});if(index<0){alert(t('noPendingLeft'));return}viewFilter='pending';$('resultFilter').value='pending';render();goToUnit(index)}
-function showRecurring(){let counts={};groups.forEach((g,i)=>compareUnit(groupText(A,g,'A'),groupText(B,g,'B')).diff.forEach(d=>{let key=`${d.a} → ${d.b}`;counts[key]=counts[key]||{count:0,units:[]};counts[key].count++;counts[key].units.push(i)}));let found=Object.entries(counts).filter(([,v])=>v.count>1);$('recurringText').innerHTML=found.length?found.map(([variant,v])=>`<button class="variant-link" onclick="goToUnit(${v.units[0]})">${esc(t('recurringItem',{variant,count:v.count}))}</button>`).join(''):t('noCorpusRepeat')}
+ let index=groups.findIndex((g,i)=>{const d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B'),g.spacing_matches).diff;return d.some((_,k)=>!decisions[i]?.[k])});if(index<0){alert(t('noPendingLeft'));return}viewFilter='pending';$('resultFilter').value='pending';render();goToUnit(index)}
+function showRecurring(){let counts={};groups.forEach((g,i)=>compareUnit(groupText(A,g,'A'),groupText(B,g,'B'),g.spacing_matches).diff.forEach(d=>{let key=`${d.a} → ${d.b}`;counts[key]=counts[key]||{count:0,units:[]};counts[key].count++;counts[key].units.push(i)}));let found=Object.entries(counts).filter(([,v])=>v.count>1);$('recurringText').innerHTML=found.length?found.map(([variant,v])=>`<button class="variant-link" onclick="goToUnit(${v.units[0]})">${esc(t('recurringItem',{variant,count:v.count}))}</button>`).join(''):t('noCorpusRepeat')}
 // Versioned portable sessions. Images remain external; blob URLs never persist.
 let projectImageLinks={},projectImageFiles={},pendingProjectOperations=0,projectOpening=false;
 const PROJECT_FORMAT='varians-project',PROJECT_VERSION=1,MAX_PROJECT_BYTES=100*1024*1024;
@@ -886,6 +918,8 @@ function validateProject(project){
   if(id==='A'||!ids.includes(id)||!obj(p)||!units(p.A)||!units(p.B)||!Array.isArray(p.alignments)||typeof p.alignment_method!=='string'||!Array.isArray(p.possible_transpositions)||!Array.isArray(p.frequent_ambiguous_cases))fail();
   for(const g of p.alignments){
    if(!obj(g)||typeof g.similarity!=='number'||!Number.isFinite(g.similarity))fail();
+   if(g.spacing_matches!==undefined&&(!Array.isArray(g.spacing_matches)||!g.spacing_matches.every(span=>
+    Array.isArray(span)&&span.length===4&&span.every(Number.isSafeInteger)&&span[0]>=0&&span[2]>=0&&span[1]>0&&span[3]>0)))fail();
    if(['originalA','originalB'].some(key=>g[key]!==undefined&&!units(g[key])))fail();
    for(const [side,arr] of [['a',p.A],['b',p.B]]){
     if(g[side+'Items']!==undefined){if(!units(g[side+'Items']))fail()}
@@ -897,7 +931,7 @@ function validateProject(project){
   const review=s.pairReviews[id];if(!obj(review)||!obj(review.decisions)||!obj(review.movementDecisions))fail();
   for(const [key,choices] of Object.entries(review.decisions)){
    if(!index(key,p.alignments.length)||!obj(choices))fail();
-   const g=p.alignments[key],count=compareUnit(groupText(p.A,g,'A'),groupText(p.B,g,'B')).diff.length;
+   const g=p.alignments[key],count=compareUnit(groupText(p.A,g,'A'),groupText(p.B,g,'B'),g.spacing_matches).diff.length;
    for(const [variant,value] of Object.entries(choices))if(!index(variant,count)||!['keep','ignore'].includes(value))fail();
   }
   for(const [key,value] of Object.entries(review.movementDecisions))if(!index(key,p.possible_transpositions.length)||!['confirm','reject'].includes(value))fail();

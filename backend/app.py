@@ -234,7 +234,7 @@ def _word_stream(lines: list[dict]) -> list[dict]:
     return merged
 
 
-def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, int | None]]:
+def _word_edit_ops(a: list[dict], b: list[dict], spacing=True) -> list[tuple[str, int | None, int | None]]:
     """Anchor exact word runs, then use weighted word-level Levenshtein in gaps."""
     ak = [word["key"] for word in a]
     bk = [word["key"] for word in b]
@@ -252,6 +252,26 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
         blocks = [block for block in blocks
                   if block.size != 1 or len(ak[block.a]) > 2]
     ops = []
+
+    def joined_spans(words, start, end):
+        spans = []
+        for stop in range(start + 1, end + 1):
+            keys = {}
+            for length in range(1, min(4, stop - start) + 1):
+                parts = words[stop - length:stop]
+                keys_by_word = [word["key"].replace(" ", "") for word in parts]
+                joined = "".join(keys_by_word)
+                if len(joined) < 5:
+                    continue
+                keys.setdefault(joined, []).append((length, 0))
+                # Diplomatic ALTO examples: ch'i non / ch'io non, and capital I
+                # read as l at the start of the separated article "Ia".
+                if length > 1 and parts[0]["text"].replace("’", "'").lower() == "ch'i" and keys_by_word[1] == "non":
+                    keys.setdefault("chio" + "".join(keys_by_word[1:]), []).append((length, 1))
+                if length > 1 and parts[0]["text"] == "Ia":
+                    keys.setdefault("la" + "".join(keys_by_word[1:]), []).append((length, 1))
+            spans.append(keys)
+        return spans
 
     def align_gap(a0, a1, b0, b1, anchor_a=None, anchor_b=None):
         n, m = a1 - a0, b1 - b0
@@ -288,6 +308,8 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
             ops.extend(("delete", i, None) for i in range(a0, a1))
             ops.extend(("insert", None, j) for j in range(b0, b1))
             return
+        left_spans = joined_spans(a, a0, a1) if spacing and not unbalanced_edge else []
+        right_spans = joined_spans(b, b0, b1) if spacing and not unbalanced_edge else []
         dp = [[0.0] * (m + 1) for _ in range(n + 1)]
         back = [[""] * (m + 1) for _ in range(n + 1)]
         for i in range(1, n + 1):
@@ -311,11 +333,28 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
                            (dp[i - 1][j] + 1.0, "delete"),
                            (dp[i][j - 1] + 1.0, "insert"))
                 dp[i][j], back[i][j] = min(choices, key=lambda item: item[0])
+                if left_spans and right_spans:
+                    left_keys, right_keys = left_spans[i - 1], right_spans[j - 1]
+                    for key in left_keys:
+                        if key not in right_keys:
+                            continue
+                        for left_count, left_tolerance in left_keys[key]:
+                            for right_count, right_tolerance in right_keys[key]:
+                                if left_count == right_count == 1 or left_tolerance + right_tolerance > 1:
+                                    continue
+                                cost = dp[i - left_count][j - right_count] + 0.01 * (left_count + right_count) + 0.05 * (left_tolerance + right_tolerance)
+                                if cost < dp[i][j]:
+                                    dp[i][j], back[i][j] = cost, (left_count, right_count)
         gap_ops = []
         i, j = n, m
         while i or j:
             step = back[i][j]
-            if step == "pair":
+            if isinstance(step, tuple):
+                left_count, right_count = step
+                i -= left_count
+                j -= right_count
+                gap_ops.append((f"spacing:{left_count}:{right_count}", a0 + i, b0 + j))
+            elif step == "pair":
                 gap_ops.append(("pair", a0 + i - 1, b0 + j - 1)); i -= 1; j -= 1
             elif step == "delete":
                 gap_ops.append(("delete", a0 + i - 1, None)); i -= 1
@@ -402,7 +441,7 @@ def _recover_displaced_word_runs(a: list[dict], b: list[dict], ops: list[tuple[s
             continue
         # Align the two run interiors with the same weighted word edit logic;
         # only retain actual diagonal correspondences.
-        local_ops = _word_edit_ops([a[i] for i in a_indices], [b[j] for j in b_indices])
+        local_ops = _word_edit_ops([a[i] for i in a_indices], [b[j] for j in b_indices], spacing=False)
         for kind, li, ri in local_ops:
             if kind == "pair" and li is not None and ri is not None:
                 pairing[a_indices[li]] = b_indices[ri]
@@ -445,18 +484,25 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
     for op_index in range(len(ops) - 1, -1, -1):
         next_a_indices[op_index] = next_a
         op, ai, _ = ops[op_index]
-        if op in {"pair", "delete"} and ai is not None:
+        if ai is not None:
             next_a = ai
     for op_index, (op, ai, bi) in enumerate(ops):
-        if op == "pair":
-            line_index = a[ai]["line_index"]
+        if op == "pair" or op.startswith("spacing:"):
+            left_count, right_count = (1, 1) if op == "pair" else map(int, op.split(":")[1:])
+            left, right = a[ai:ai + left_count], b[bi:bi + right_count]
+            line_index = left[0]["line_index"]
             if current_reference_line != line_index or current_reference_row is None:
                 row = new_row(line_index)
-                current_reference_line, current_reference_row = line_index, row
+                current_reference_row = row
             else:
                 row = current_reference_row
-            row["aItems"].append(a[ai])
-            row["bWords"].append(b[bi])
+            current_reference_line = left[-1]["line_index"]
+            row["a1"] = current_reference_line + 1
+            if op != "pair":
+                row.setdefault("spacing_matches", []).append(
+                    [len(row["aItems"]), left_count, len(row["bWords"]), right_count])
+            row["aItems"].extend(left)
+            row["bWords"].extend(right)
             current_insertion_line = current_insertion_row = None
         elif op == "delete":
             line_index = a[ai]["line_index"]
@@ -517,6 +563,8 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
             )
             if context_matches:
                 following["bWords"] = [displaced] + comparison_words
+                for match in following.get("spacing_matches", []):
+                    match[2] += 1
                 row_index += 1
                 continue
         compact_rows.append(row)
@@ -562,18 +610,26 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
         score_left = " ".join(word["key"] for word in row["aItems"])
         score_right = " ".join(word["key"] for word in row["bWords"])
         score = similarity(score_left, score_right) if score_left and score_right else 0.0
+        if row.get("spacing_matches"):
+            left_keys = [word["key"] for word in row["aItems"]]
+            right_keys = [word["key"] for word in row["bWords"]]
+            for i, n, j, m in reversed(row["spacing_matches"]):
+                left_keys[i:i + n] = right_keys[j:j + m] = ["".join(left_keys[i:i + n])]
+            score = similarity(" ".join(left_keys), " ".join(right_keys))
         reading = {"a0": row["a0"], "a1": row["a1"],
                    "b0": row["b0"], "b1": row["b1"], "aItems": a_items,
                    "bItems": b_items, "score": 0, "similarity": score}
         # Suppress unsupported substitutions after matching is finished.
         # Keep both fragments and never search for a replacement partner.
         left_tokens, right_tokens = normalize(score_left), normalize(score_right)
-        if (left_tokens and right_tokens and max(len(left_tokens), len(right_tokens)) >= 3
+        if (not row.get("spacing_matches") and left_tokens and right_tokens and max(len(left_tokens), len(right_tokens)) >= 3
                 and score < 0.15 and not set(left_tokens).intersection(right_tokens)):
             result.append({**reading, "bItems": [], "similarity": 0.0, "lexical_review": True})
             result.append({**reading, "aItems": [], "a0": row["a1"], "a1": row["a1"],
                            "similarity": 0.0, "lexical_review": True})
         else:
+            if row.get("spacing_matches"):
+                reading["spacing_matches"] = row["spacing_matches"]
             result.append(reading)
     for index, reading in enumerate(result):
         reading["id"] = index

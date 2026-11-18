@@ -601,7 +601,18 @@ print(json.dumps({'witnesses': {'A': a, 'B': b}, 'alignments': app.align_alto_wo
   await page.locator('#addWitnessBtn').click();
   await page.locator('#fileB').setInputFiles(['102224','104622','104628','104633'].map(number=>path.join(sample,'Malmantile_Tordi.386',`IMG_20250905_${number}.xml`)));
   await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+  const pairCount=await page.locator('#totalBadge').textContent();
   await page.getByRole('button',{name:'All witnesses',exact:true}).click();
+  assert.equal(await page.locator('#totalBadge').textContent(),pairCount);
+  const spelling=await page.evaluate(()=>{
+   const group=groups.find(g=>(g.aItems||[]).some(item=>item.text.includes('ch’iononneso')||item.text.includes("ch'iononneso")));
+   const left=groupText(A,group,'A'),right=groupText(B,group,'B');
+   return {left,right,differences:compareUnit(left,right,group.spacing_matches).diff};
+  });
+  assert.match(spelling.right,/ch'i non ne sò/);
+  assert.match(spelling.right,/Ia vendo/);
+  assert.deepEqual(spelling.differences,[]);
+
   const row=page.locator('.multi-row').filter({has:page.locator('.witness-reference',{hasText:'faceva istanza al Poeta della presente Composizione'})});
   const fragments=row.locator('.witness-card[data-witness="B"] [data-pair-unit]');
   assert.equal(await fragments.count(),5);
@@ -613,6 +624,7 @@ print(json.dumps({'witnesses': {'A': a, 'B': b}, 'alignments': app.align_alto_wo
   const pair=page.locator(`#unit-${Number(unit)-1}`);
   assert.match(await pair.innerText(),/Principe Leopoldo/);
   await page.getByRole('button',{name:'Line by line',exact:true}).click();
+  assert.equal(await page.locator('#totalBadge').textContent(),pairCount);
   await page.evaluate(index=>goToUnit(index),Number(unit)-1);
   assert.deepEqual(await page.locator('.witness-card[data-witness="B"] [data-pair-unit]').evaluateAll(nodes=>nodes.map(node=>node.dataset.pairUnit)),
    [Number(unit)-1,Number(unit),Number(unit)+1,Number(unit)+2,Number(unit)+3].map(String));

@@ -98,5 +98,24 @@ class ALTOTests(unittest.TestCase):
         self.assertEqual(len({ref['line'] for item in row['bItems'] for ref in item['refs']}), 2)
 
 
+    def test_word_boundaries_can_align_one_to_many_many_to_one_and_many_to_many(self):
+        for left, right, counts in [
+            ('lavendo', 'la vendo', (1, 2)),
+            ('la vendo', 'lavendo', (2, 1)),
+            ('nel mezzo', 'nelmez zo', (2, 2)),
+            ("ch'iononneso", "ch'i non ne sò", (1, 4)),
+            ('lavendo', 'Ia vendo', (1, 2)),
+        ]:
+            with self.subTest(left=left, right=right):
+                a = parse_alto(alto('p', 'a', left), 'a.xml')
+                b = parse_alto(alto('p', 'b', right), 'b.xml')
+                rows = align_alto_words(a, b)
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]['spacing_matches'], [[0, counts[0], 0, counts[1]]])
+                self.assertEqual(rows[0]['similarity'], 1.0)
+                self.assertEqual(rows[0]['aItems'][0]['text'], left)
+                self.assertEqual(rows[0]['bItems'][0]['text'], right)
+
+
 if __name__=='__main__':
     unittest.main()
