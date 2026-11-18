@@ -265,10 +265,46 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
     # Common function words are poor anchors and autojunk keeps the search
     # bounded on long witness files.
     matcher = SequenceMatcher(None, ak, bk, autojunk=True)
+    blocks = matcher.get_matching_blocks()
+    def disproportionate(n, m):
+        return abs(n - m) >= 12 and max(n, m) >= 4 * max(1, min(n, m))
+
+    sparse_overlap = disproportionate(len(a), len(b)) and not any(block.size >= 2 for block in blocks)
+    if sparse_overlap:
+        # A lone function word (for example "di") is not an anchor
+        # between a short title page and unrelated running text.
+        blocks = [block for block in blocks
+                  if block.size != 1 or len(ak[block.a]) > 2]
     ops = []
 
-    def align_gap(a0, a1, b0, b1):
+    def align_gap(a0, a1, b0, b1, anchor_a=None, anchor_b=None):
         n, m = a1 - a0, b1 - b0
+        unbalanced_edge = (
+            (a0 == b0 == 0 or (a1 == len(a) and b1 == len(b)))
+            and disproportionate(n, m)
+        )
+
+        def block_key(word):
+            refs = word["refs"]
+            if not refs or not refs[0].get("block_id"):
+                return None
+            ref = refs[0]
+            return (ref.get("alto_file"), ref["block_id"])
+
+        # A trusted nearby ALTO block can support substitutions such as a
+        # different author credit after a matching title. The rest of a long
+        # unmatched edge needs lexical evidence before it can absorb text.
+        block_a = block_key(a[anchor_a]) if anchor_a is not None else None
+        block_b = block_key(b[anchor_b]) if anchor_b is not None else None
+        neighborhood = 2 * min(n, m) + 4
+        strong_block_a = [
+            block_a is not None and abs(index - anchor_a) <= neighborhood and block_key(a[index]) == block_a
+            for index in range(a0, a1)
+        ] if unbalanced_edge else []
+        strong_block_b = [
+            block_b is not None and abs(index - anchor_b) <= neighborhood and block_key(b[index]) == block_b
+            for index in range(b0, b1)
+        ] if unbalanced_edge else []
         # Very large nonmatching spans are kept as additions/omissions. This
         # avoids quadratic memory use and prevents unrelated preliminaries
         # from being forced into word substitutions.
@@ -290,6 +326,11 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
             for j in range(1, m + 1):
                 left, right = ak[a0 + i - 1], bk[b0 + j - 1]
                 sub_cost = substitution_cost(left, right)
+                if unbalanced_edge and not (strong_block_a[i - 1] and strong_block_b[j - 1]):
+                    weak_match = sub_cost > (0.15 if sparse_overlap else 0.38)
+                    short_word = sparse_overlap and min(len(left), len(right)) <= 2
+                    if weak_match or short_word:
+                        sub_cost = float("inf")
                 choices = ((dp[i - 1][j - 1] + sub_cost, "pair"),
                            (dp[i - 1][j] + 1.0, "delete"),
                            (dp[i][j - 1] + 1.0, "insert"))
@@ -307,11 +348,18 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
         ops.extend(reversed(gap_ops))
 
     ai = bi = 0
-    for block in matcher.get_matching_blocks():
-        align_gap(ai, block.a, bi, block.b)
+    previous = None
+    for block in blocks:
+        anchor_a = anchor_b = None
+        if previous is None and block.size >= 2:
+            anchor_a, anchor_b = block.a, block.b
+        elif not block.size and previous is not None and previous.size >= 2:
+            anchor_a, anchor_b = ai - 1, bi - 1
+        align_gap(ai, block.a, bi, block.b, anchor_a, anchor_b)
         ops.extend(("pair", block.a + offset, block.b + offset)
                    for offset in range(block.size))
         ai, bi = block.a + block.size, block.b + block.size
+        previous = block
     return ops
 
 

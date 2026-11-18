@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
-from app import align, parse_alto, similarity
+from app import align, align_alto_words, parse_alto, parse_alto_bundle, similarity
 from relocations import find_displaced_passages
 
 
@@ -43,6 +43,36 @@ class ALTOTests(unittest.TestCase):
         groups=align(a,b)
         candidates=find_displaced_passages(a,b,groups,similarity)
         self.assertTrue(any(g['a0'] <= 1 < g['a1'] and g['b0'] <= 3 < g['b1'] for g in groups) or any(c['text_a']==a[1]['text'] and c['text_b']==b[3]['text'] for c in candidates))
+
+
+    def test_malmantile_title_credit_does_not_drift_into_dedicatory_prose(self):
+        samples = Path(__file__).resolve().parents[1] / 'samples'
+        paths = sorted((samples / 'Malmantile_II.IV.232').glob('*.xml'))
+        reference = parse_alto_bundle([
+            {'name': path.name, 'text': path.read_text(encoding='utf-8')} for path in paths
+        ])
+        path = samples / 'Malmantile_VII.1397' / 'DSC_0237.xml'
+        title = parse_alto(path.read_text(encoding='utf-8'), path.name)
+
+        def readings(rows, left, right):
+            return [(' '.join(item['text'] for item in row[left]),
+                     ' '.join(item['text'] for item in row[right])) for row in rows]
+
+        full = readings(align_alto_words(reference, title), 'aItems', 'bItems')
+        self.assertIn(('PERLONE ZIPOLI', 'LORENZO LIPPI'), full)
+        self.assertTrue(any("ch'iononneso" in text and not witness for text, witness in full))
+
+        body = [unit for unit in reference if unit['refs'][0]['alto_file'] == 'IMG_20250905_143230.xml']
+        for rows, body_side, title_side in [
+            (align_alto_words(body, title), 'aItems', 'bItems'),
+            (align_alto_words(title, body), 'bItems', 'aItems'),
+        ]:
+            with self.subTest(body_side=body_side):
+                pairs = readings(rows, body_side, title_side)
+                self.assertIn(('', 'LORENZO'), pairs)
+                self.assertTrue(any("ch'iononneso" in text and not witness for text, witness in pairs))
+                self.assertEqual(' '.join(witness for _, witness in pairs if witness),
+                                 ' '.join(unit['text'] for unit in title))
 
 
 if __name__=='__main__':
