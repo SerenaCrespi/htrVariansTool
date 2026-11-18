@@ -48,6 +48,9 @@
 .segment-heading{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 4px}
 .pair-unit-link{background:none;border:0;padding:0;color:var(--forest);font-size:.76rem;text-decoration:underline;cursor:pointer}
 .witness-card .segment-reference{background:#f7f3ee;margin-bottom:4px}
+.witness-review-details{margin-top:6px}
+.witness-review-details summary{cursor:pointer;color:var(--forest);font-size:.78rem}
+.witness-review-details [data-pair-unit]{margin-top:8px;padding-top:6px;border-top:1px solid var(--line)}
 .multi-reading .controls{margin-top:6px;flex-wrap:wrap}
 .witness-card .textline{padding:6px;font-size:.86rem}
 .witness-card .status-note{overflow-wrap:anywhere}
@@ -95,4 +98,4 @@
 <details id="teiTitleLines"><summary data-i18n="titleLines">Title lines</summary><p class="hint" data-i18n="titleLinesHint">Select the reference lines to export as TEI headings.</p><div id="titleLineOptions"></div></details>
 <p id="witnessExportIds" class="status-note"></p><p id="teiExportError" role="alert"></p>
 <div class="controls"><button type="button" class="btn btn-green" id="confirmTeiExport" data-i18n="downloadTei">Download TEI</button></div>
-</dialog><div id="alignmentToast" hidden><span aria-hidden="true">✓</span><strong id="alignmentToastMessage" role="status"></strong><button type="button" class="btn btn-outline" id="dismissAlignmentToast" data-i18n="close">Close</button></div><dialog id="facsimileDialog" aria-labelledby="facsimileDialogTitle"><div class="iiif-head"><strong id="facsimileDialogTitle" data-i18n="fullPage">Page context</strong><button type="button" class="btn btn-outline" id="closeFacsimile" data-i18n="close">Close</button></div><div id="facsimilePage"></div></dialog><div id="modal"></div><script src="/export-support.js?v=20261118-export-alignment" defer></script><script src="/frontend.js?v=20261118-alto-order" defer></script></body></html>
+</dialog><div id="alignmentToast" hidden><span aria-hidden="true">✓</span><strong id="alignmentToastMessage" role="status"></strong><button type="button" class="btn btn-outline" id="dismissAlignmentToast" data-i18n="close">Close</button></div><dialog id="facsimileDialog" aria-labelledby="facsimileDialogTitle"><div class="iiif-head"><strong id="facsimileDialogTitle" data-i18n="fullPage">Page context</strong><button type="button" class="btn btn-outline" id="closeFacsimile" data-i18n="close">Close</button></div><div id="facsimilePage"></div></dialog><div id="modal"></div><script src="/export-support.js?v=20261118-export-alignment" defer></script><script src="/frontend.js?v=20261118-continuous-witness-reading" defer></script></body></html>

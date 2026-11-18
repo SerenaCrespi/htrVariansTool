@@ -639,9 +639,12 @@ print(json.dumps({'witnesses': {'A': a, 'B': b}, 'alignments': app.align_alto_wo
   const row=page.locator('.multi-row').filter({has:page.locator('.witness-reference',{hasText:'faceva istanza al Poeta della presente Composizione'})});
   const fragments=row.locator('.witness-card[data-witness="B"] [data-pair-unit]');
   assert.equal(await fragments.count(),5);
-  const texts=await fragments.allTextContents();
-  assert.match(texts[1],/Principe Leopoldo/);
-  assert.match(texts[3],/in occasioni di mandargli/);
+  const card=row.locator('.witness-card[data-witness="B"]');
+  const reading=card.locator('.multi-reading > .textline');
+  assert.equal(await reading.count(),1);
+  assert.match(await reading.innerText(),/Autore al ser:mo Principe Leopoldo di Foscana in occasioni di mandargli il presente Poema/);
+  assert.equal(await fragments.first().isVisible(),false);
+  await card.locator('.witness-review-details summary').click();
   const unit=await fragments.nth(1).getAttribute('data-pair-unit');
   await fragments.nth(1).locator('.pair-unit-link').click();
   const pair=page.locator(`#unit-${Number(unit)-1}`);
@@ -690,7 +693,7 @@ test('multi-witness grouping keeps an addition between its neighboring ALTO read
    setWitnessView('all');
   },{a,b});
   const readings=page.locator('.witness-card[data-witness="B"] .multi-reading > .textline:not(.segment-reference)');
-  assert.deepEqual(await readings.allTextContents(),['prima riga','aggiunta intermedia','seconda riga']);
+  assert.deepEqual(await readings.allTextContents(),['prima riga aggiunta intermedia seconda riga']);
   assert.equal(await page.locator('.multi-row').count(),1);
  }finally{await page.close()}
 });

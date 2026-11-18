@@ -417,13 +417,13 @@ function witnessEntryReview(entry){
   kept:diff.diff.filter((_,k)=>review[index]?.[k]==='keep').length,
   uncertain:!!(group.semantic_review||group.lexical_review||(left.length&&right.length&&group.similarity<.45))};
 }
-function witnessReading(entry,showReference,label){
+function witnessReading(entry,showReference,label,showReading=true){
  const {id,index,left,right,review,diff}=entry,state=review[index]||{};
  const action=(method,label,classes)=>`<button type="button" class="btn ${classes}" onclick="reviewWitnessAction('${id}',${index},'${method}')">${t(label)}</button>`;
  return `<section class="multi-reading" data-pair-unit="${index+1}">
  <div class="segment-heading"><button type="button" class="pair-unit-link" onclick="reviewWitnessAction('${id}',${index},'pair')">${t('pairView')} · ${t('unitLabel',{n:label})}</button>${entry.uncertain?`<span class="status-note">${t('needsReview')}</span>`:''}</div>
  ${showReference?`<div class="textline segment-reference"><span class="status-note">${t('pairReference')}</span><br>${left.length?renderText(diff.aa,index,review):`<em>${t('noPassage')}</em>`}</div>`:''}
- <div class="textline">${right.length?renderText(diff.bb,index,review):`<em>${t('noPassage')}</em>`}</div>
+ ${showReading?`<div class="textline">${right.length?renderText(diff.bb,index,review):`<em>${t('noPassage')}</em>`}</div>`:''}
  ${diff.diff.length?`<div class="controls">${diff.diff.map((variant,k)=>`<span class="variant-item"><b>${esc(variant.a)} → ${esc(variant.b)}</b>
  <button type="button" class="btn btn-light keepmini ${state[k]==='keep'?'chosen':''}" onclick="reviewWitnessAction('${id}',${index},'keep',${k})">${t('keep')}</button>
  <button type="button" class="btn btn-light ignoremini ${state[k]==='ignore'?'chosen':''}" onclick="reviewWitnessAction('${id}',${index},'ignore',${k})">${t('ignore')}</button></span>`).join('')}</div>`:''}
@@ -572,6 +572,17 @@ function renderWitnessImages(rows,sources){
  witnessImageObserver=observer;
  for(const target of pending.keys())observer.observe(target);
 }
+messages.en.reviewFragments='Review details';
+messages.it.reviewFragments='Dettagli della revisione';
+messages.fr.reviewFragments='Détails de la révision';
+function combinedWitnessReading(readings,label,detailsOpen){
+ const text=readings.flatMap(entry=>entry.right).map(item=>item.text).filter(Boolean).join(' ');
+ const needsReview=readings.some(entry=>entry.uncertain);
+ return `<div class="multi-reading"><div class="textline">${esc(text)||`<em>${t('noPassage')}</em>`}</div>
+ <details class="witness-review-details" ${detailsOpen?'open':''}><summary>${t('reviewFragments')}${needsReview?` <span class="status-note">${t('needsReview')}</span>`:''}</summary>
+ ${readings.map((entry,index)=>witnessReading(entry,false,`${label}.${index+1}`,false)).join('')}
+ </details></div>`;
+}
 function renderWitnessComparison(){
  const {all,visible}=comparisonRows();
  const entries=all.flatMap(row=>row.entries);
@@ -587,6 +598,9 @@ function renderWitnessComparison(){
   id,new Map(units.flatMap(unit=>unit.refs||[]).map(ref=>[VariansExport.sourceLineKey(ref),ref]))
  ]));
  const previousScroll=new Map([...$('results').querySelectorAll('.witness-scroll')].map(node=>[node.closest('article').id,node.scrollLeft]));
+ const openReview=new Set([...$('results').querySelectorAll('.witness-review-details[open]')].map(node=>
+  `${node.closest('article').id}:${node.closest('.witness-card').dataset.witness}`));
+
  const card=(id,readings)=>`<section class="witness-card ${id==='A'?'witness-reference':''}" data-witness="${id}">
  <h4>${esc(names[id])}</h4>${readings}<div class="witness-facsimiles" data-witness-facsimiles="${id}"></div></section>`;
  const text=row=>{
@@ -596,7 +610,8 @@ function renderWitnessComparison(){
   ${ids.map(id=>{
    const readings=row.entries.filter(entry=>entry.id===id);
    const pairText=readings.flatMap(entry=>entry.left).map(item=>item.text).join(' ');
-   return card(id,readings.length?readings.map((entry,index)=>witnessReading(entry,readings.length>1||pairText!==referenceText,readings.length>1?`${row.index+1}.${index+1}`:row.index+1)).join(''):
+   if(readings.length>1)return card(id,combinedWitnessReading(readings,row.index+1,openReview.has(`witness-unit-${row.index}:${id}`)));
+   return card(id,readings.length?witnessReading(readings[0],pairText!==referenceText,row.index+1):
     `<div class="multi-reading textline"><em>${t('noPassage')}</em></div>`);
   }).join('')}</div></div>`;
  };
