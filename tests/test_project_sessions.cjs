@@ -82,6 +82,7 @@ test('save/reopen preserves multi-witness edits, decisions, exports, settings an
  await page.locator('#resultFilter').selectOption('variants');
  const expected=await page.evaluate(()=>captureProject());
  const jsonBefore=await download(page,'#exportJson'),teiBefore=await download(page,'#exportTei');
+ assert.match(teiBefore,/<app type="collation" xml:id="app-1">/);
  const saved=await download(page,'#saveProject');assert.deepEqual(JSON.parse(saved),expected);assert.ok(!saved.includes('blob:'));
  await reloadWithoutSession(page);await open(page,saved);
  assert.deepEqual(await page.evaluate(()=>captureProject()),expected);

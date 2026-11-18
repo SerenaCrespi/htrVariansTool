@@ -891,7 +891,7 @@ function buildTEI(ranges=genreRanges,genre=uniformGenre,titles=titleLines){
   (start,end)=>VariansExport.renderALTOPoetry(referenceUnits,sourceUnits,edits,ids,idMap,start,end),
   titles.size?(start,end)=>VariansExport.renderTitleRange(referenceUnits,sourceUnits,edits,ids,idMap,start,end,titles):null);
  const witnesses=['A',...ids].map(id=>`<witness xml:id="${esc(idMap[id])}">${esc(names[id])}</witness>`).join('');
- return `<?xml version="1.0" encoding="UTF-8"?>\n<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader><fileDesc><titleStmt><title>${esc(t('teiTitle'))}</title></titleStmt><publicationStmt><p>${esc(t('teiExport'))}</p></publicationStmt><sourceDesc><listWit>${witnesses}</listWit></sourceDesc></fileDesc></teiHeader><text><body>${body}</body></text></TEI>`;
+ return `<?xml version="1.0" encoding="UTF-8"?>\n<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader><fileDesc><titleStmt><title>${esc(t('teiTitle'))}</title></titleStmt><publicationStmt><p>${esc(t('teiExport'))}</p></publicationStmt><sourceDesc><listWit>${witnesses}</listWit></sourceDesc></fileDesc></teiHeader><text><body>${VariansExport.identifyApparatus(body,idMap)}</body></text></TEI>`;
 }
 function exportTEI(){
  if(!Object.keys(pairResults).length){alert(t('noAlignment'));return}

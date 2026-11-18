@@ -117,3 +117,27 @@ test('a title line inside a grouped unit starts a new division and keeps its var
   (a,b)=>renderTitleRange(reference,source,edits,['B'],idMap,a,b,titles));
  assert.match(xml,/<div><p>prologo<\/p><\/div>\n<div><head>Titolo <app[^>]*>[\s\S]*lungo<\/rdg><\/app><\/head>\n<p>prima riga<\/p><\/div>/);
 });
+
+test('consecutive title units form one head even across genre ranges',()=>{
+ const {renderTitleRange,sourceLineKey}=require('../export-support.js');
+ const source=['Titolo','in due righe','prima riga','Altro titolo','seconda riga'].map((text,i)=>sourceItem(text,`l${i}`));
+ const reference=source.map(item=>reviewUnit([item]));
+ const titles=new Set([0,1,3].map(i=>sourceLineKey(source[i].refs[0])));
+ const xml=renderGenreRanges(reference,[{start:1,end:1,genre:'prose'},{start:2,end:5,genre:'poetry'}],
+  (a,b)=>renderApparatus(reference,[],['B'],idMap,a,b),null,
+  (a,b)=>renderTitleRange(reference,source,[],['B'],idMap,a,b,titles));
+ assert.match(xml,/<head>Titolo in due righe<\/head>.*\n<lg/s);
+ assert.equal((xml.match(/<head>/g)||[]).length,2);
+ assert.match(xml,/<\/div>\n<div><head>Altro titolo<\/head>/);
+});
+
+test('apparatus IDs are unique across the document and avoid witness IDs',()=>{
+ const {identifyApparatus}=require('../export-support.js');
+ const witnesses={A:'app-1',B:'B'};
+ const edits=[{id:'B',a0:0,a1:1,tokens:['Primo']},{id:'B',a0:5,a1:6,tokens:['Altro']}];
+ const body=renderGenreRanges(units,ranges,(start,end)=>renderApparatus(units,edits,['B'],witnesses,start,end));
+ const xml=identifyApparatus(body,witnesses);
+ assert.deepEqual([...xml.matchAll(/<app type="collation" xml:id="([^"]+)">/g)].map(match=>match[1]),['app-2','app-3']);
+ assert.match(xml,/<lem wit="#app-1">/);
+ assert.equal(identifyApparatus(body,witnesses),xml);
+});

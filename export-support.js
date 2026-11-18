@@ -46,12 +46,19 @@
   });
   if(!parts.some(part=>part.head))return parts.map(part=>part.content).join('\n');
   const sections=[];
-  let section=[],hasContent=false;
+  let section=[],hasContent=false,heading=[];
+  const flushHeading=()=>{
+   if(heading.length)section.push(`<head>${heading.join(' ')}</head>`);
+   heading=[];
+  };
   for(const part of parts){
    if(part.head&&hasContent){sections.push(section);section=[];hasContent=false}
+   if(part.head){heading.push(part.content);continue}
+   flushHeading();
    section.push(part.content);
-   if(!part.head)hasContent=true;
+   hasContent=true;
   }
+  flushHeading();
   sections.push(section);
   return sections.map(items=>`<div>${items.join('\n')}</div>`).join('\n');
  }
@@ -185,24 +192,29 @@
   const {lines,selected,projected}=projectALTOApparatus(referenceUnits,sourceUnits,edits,startUnit,endUnit,'titleLineBoundary');
   const render=(start,end)=>renderApparatus(lines,projected,ids,idMap,start,end);
   const parts=[];
-  let textLines=[];
-  const flush=()=>{
-   if(!textLines.length)return;
-   const block=textLines;
-   parts.push({render:genre=>genre==='poetry'
-    ? block.map(i=>`<l>${render(i,i+1)}</l>`).join('\n')
-    : render(block[0],block.at(-1)+1)});
-   textLines=[];
-  };
   for(const i of selected){
-   if(titles.has(lines[i].sourceKey)){
-    flush();
-    parts.push({head:true,content:`<head>${render(i,i+1)}</head>`});
-   }else textLines.push(i);
+   const head=titles.has(lines[i].sourceKey);
+   const last=parts.at(-1);
+   if(last?.head===head)last.lines.push(i);
+   else parts.push({head,lines:[i]});
   }
-  flush();
-  return parts;
+  return parts.map(({head,lines:block})=>{
+   const renderBlock=()=>render(block[0],block.at(-1)+1);
+   return head?{head,content:renderBlock()}:{render:genre=>genre==='poetry'
+    ? block.map(i=>`<l>${render(i,i+1)}</l>`).join('\n')
+    : renderBlock()};
+  });
  }
 
- return {sourceLineKey,altoPoetryLayout,renderALTOPoetry,renderTitleRange,witnessIdentifiers,validateGenreRanges,renderGenreRanges,unitWordOffsets,renderApparatus};
+ function identifyApparatus(body,idMap){
+  const reserved=new Set(Object.values(idMap));
+  let next=1;
+  return body.replaceAll('<app type="collation">',()=>{
+   let id;
+   do{id=`app-${next++}`}while(reserved.has(id));
+   return `<app type="collation" xml:id="${id}">`;
+  });
+ }
+
+ return {identifyApparatus,sourceLineKey,altoPoetryLayout,renderALTOPoetry,renderTitleRange,witnessIdentifiers,validateGenreRanges,renderGenreRanges,unitWordOffsets,renderApparatus};
 });
