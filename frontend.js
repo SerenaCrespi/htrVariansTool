@@ -797,6 +797,10 @@ Object.assign(messages.fr,{sessionRestored:'Session restaurée',sessionStorageUn
 let sessionDB,sessionKey,sessionSaveScheduled=false,sessionImagesDirty=false,sessionRestoring=true;
 function saveBrowserSession(imagesChanged=false){
  sessionImagesDirty||=imagesChanged;
+ if(sessionKey&&!sessionRestoring&&!pendingProjectOperations){
+  // Keep navigation synchronous so an immediate refresh cannot overtake an IndexedDB commit.
+  try{sessionStorage.setItem('varians-session-view',JSON.stringify({witnessView,focusRow}))}catch{}
+ }
  if(!sessionDB||sessionRestoring||pendingProjectOperations||sessionSaveScheduled)return;
  sessionSaveScheduled=true;
  queueMicrotask(()=>{
@@ -830,7 +834,7 @@ async function restoreBrowserSession(){
  main.inert=true;
  try{
   sessionKey=sessionStorage.getItem('varians-session');
-  if(!sessionKey){sessionKey=Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16).padStart(8,'0')).join('');sessionStorage.setItem('varians-session',sessionKey)}
+  if(!sessionKey){sessionStorage.removeItem('varians-session-view');sessionKey=Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16).padStart(8,'0')).join('');sessionStorage.setItem('varians-session',sessionKey)}
   const request=indexedDB.open('varians-workspace',1);
   request.onupgradeneeded=()=>request.result.createObjectStore('sessions');
   sessionDB=await sessionRequest(request);
@@ -848,7 +852,7 @@ async function restoreBrowserSession(){
    }
    if(restored.length)setImageStatus(id,{good:restored.map(file=>file.name),bad:[]});
   }
-  const view=saved.view;
+  const view=JSON.parse(sessionStorage.getItem('varians-session-view')||'null')||saved.view;
   if(Number.isSafeInteger(view?.focusRow)&&view.focusRow>=0)focusRow=view.focusRow;
   if(['pair','all','focus'].includes(view?.witnessView))setWitnessView(view.witnessView);
   $('projectStatus').textContent='';
