@@ -411,7 +411,7 @@ test('alignment feedback and TEI titles work through the export menu',{timeout:2
    const progress=page.getByRole('progressbar',{name:'Aligning witnesses…'});
    await progress.waitFor();
    assert.equal(await progress.getAttribute('aria-valuenow'),'0');
-   assert.match(await page.locator('#alignmentRemaining').innerText(),/3 remaining/);
+   assert.match(await page.locator('#alignmentRemaining').innerText(),/2 remaining/);
    assert.equal(await page.locator('#alignmentToast').isVisible(),false);
   }finally{release()}
   await page.locator('#alignmentToast').waitFor();
@@ -542,6 +542,13 @@ test('alignment streams actual stages and preserves the JSON endpoint',async()=>
   assert.deepEqual(events.slice(0,-1),[{completed:1},{completed:2}]);
   const json=await page.request.post(url+'/api/align',{data});
   assert.deepEqual(events.at(-1).result,await json.json());
+  const fast=await page.request.post(url+'/api/align',{headers,data:{...data,include_displacements:false}});
+  const fastEvents=(await fast.text()).trim().split('\n').map(line=>JSON.parse(line));
+  assert.deepEqual(fastEvents.slice(0,-1),[{completed:1}]);
+  const baseline=events.at(-1).result,review=fastEvents.at(-1).result;
+  assert.deepEqual(review.alignments,baseline.alignments);
+  assert.deepEqual(review.witnesses,baseline.witnesses);
+  assert.deepEqual(review.possible_transpositions,[]);
  }finally{await page.close()}
 });
 
@@ -647,9 +654,17 @@ print(json.dumps({'witnesses': {'A': a, 'B': b}, 'alignments': app.align_alto_wo
   await card.locator('.witness-review-details summary').click();
   assert.equal(await reading.locator('.token.var',{hasText:'Autore'}).count(),1);
   assert.equal(await reading.locator('.token.var',{hasText:'Foscana'}).count(),1);
-  await fragments.nth(0).locator('.variant-item').filter({hasText:'Autore'}).getByRole('button',{name:'Keep',exact:true}).click();
+  const keep=fragments.nth(0).locator('.variant-item').filter({hasText:'Autore'}).getByRole('button',{name:'Keep',exact:true});
+  await keep.scrollIntoViewIfNeeded();
+  const beforeKeep=await row.evaluate(node=>node.getBoundingClientRect().top);
+  await keep.click();
+  assert.ok(Math.abs(await row.evaluate(node=>node.getBoundingClientRect().top)-beforeKeep)<=1);
   assert.equal(await reading.locator('.token.keep',{hasText:'Autore'}).count(),1);
-  await fragments.nth(2).locator('.variant-item').filter({hasText:'Foscana'}).getByRole('button',{name:'Ignore',exact:true}).click();
+  const ignore=fragments.nth(2).locator('.variant-item').filter({hasText:'Foscana'}).getByRole('button',{name:'Ignore',exact:true});
+  await ignore.scrollIntoViewIfNeeded();
+  const beforeIgnore=await row.evaluate(node=>node.getBoundingClientRect().top);
+  await ignore.click();
+  assert.ok(Math.abs(await row.evaluate(node=>node.getBoundingClientRect().top)-beforeIgnore)<=1);
   assert.equal(await reading.locator('.token.ignore',{hasText:'Foscana'}).count(),1);
   const retained=await page.evaluate(()=>[...new DOMParser().parseFromString(buildTEI(),'application/xml').getElementsByTagName('rdg')].map(node=>node.textContent));
   assert.ok(retained.some(text=>text.includes('Autore')));

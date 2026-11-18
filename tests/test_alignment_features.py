@@ -146,5 +146,26 @@ class ALTOTests(unittest.TestCase):
         self.assertFalse(any(not left and 'mando a VAS' in right for left, right in phrases))
 
 
+    def test_fast_alignment_and_reference_cache_preserve_rows_and_source_refs(self):
+        import app
+        from unittest.mock import patch
+
+        files = [{'name': 'a.xml', 'text': alto('a', 'a1', 'prima lezione del testimone')}]
+        a = parse_alto_bundle(files)
+        b = parse_alto(alto('b', 'b1', 'prima lettura del testimone'), 'b.xml')
+        ordinary_rows, ordinary_method, _ = app.align_witness_inputs(a, b)
+        app._cached_reference.cache_clear()
+        with patch.object(app, 'parse_alto_bundle', wraps=app.parse_alto_bundle) as parser:
+            reference = app.parse_reference_alto(files)
+            reference[0]['refs'][0]['line'] = 'modified'
+            reference = app.parse_reference_alto(files)
+            parser.assert_called_once()
+        self.assertEqual(reference, a)
+        with patch.object(app, '_align_dp', side_effect=AssertionError('unexpected pass')):
+            fast_rows, fast_method, suggestions = app.align_witness_inputs(
+                reference, b, include_displacements=False)
+        self.assertEqual((fast_rows, fast_method, suggestions), (ordinary_rows, ordinary_method, []))
+
+
 if __name__=='__main__':
     unittest.main()

@@ -9,6 +9,7 @@ Processing overview:
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 from difflib import SequenceMatcher
 from functools import lru_cache
 import json
@@ -802,6 +803,22 @@ def parse_alto_bundle(value, taxonomy: dict | None = None) -> list[dict]:
         unit["index"] = index
     return combined
 
+@lru_cache(maxsize=4)
+def _cached_reference(files):
+    return parse_alto_bundle([{"name": name, "text": text} for name, text in files])
+
+
+def parse_reference_alto(value, taxonomy=None):
+    # Limit retained XML and preserve the normal parser for other inputs.
+    if (taxonomy is None and isinstance(value, list) and
+            all(isinstance(file, dict) and isinstance(file.get("name", ""), str)
+                and isinstance(file.get("text"), str) for file in value) and
+            sum(len(file["text"]) for file in value) <= 2_000_000):
+        files = tuple((file.get("name", ""), file["text"]) for file in value)
+        return deepcopy(_cached_reference(files))
+    return parse_alto_bundle(value, taxonomy)
+
+
 def clean_sentences(value) -> list[dict]:
     """Validate the alternate plain-text sentence input format."""
     if not isinstance(value, list):
@@ -832,10 +849,11 @@ def _alignment_groups_as_rows(groups: list[dict], a: list[dict], b: list[dict]) 
     return rows
 
 
-def align_witness_inputs(a: list[dict], b: list[dict], progress=None):
+def align_witness_inputs(a: list[dict], b: list[dict], progress=None, *, include_displacements=True):
     """Align the word streams and compute displaced-passage suggestions."""
     if progress:
         progress(1)
+    line_groups = None
     try:
         alignments = align_alto_words(a, b)
     except Exception as exc:
@@ -844,13 +862,16 @@ def align_witness_inputs(a: list[dict], b: list[dict], progress=None):
     if alignments:
         alignment_method = "word-level Levenshtein in ALTO order"
     else:
-        groups = _align_dp(a, b)
-        alignments = _alignment_groups_as_rows(groups, a, b)
+        line_groups = _align_dp(a, b)
+        alignments = _alignment_groups_as_rows(line_groups, a, b)
         alignment_method = "weighted Levenshtein backup"
-    if progress:
-        progress(2)
-    line_groups = _align_dp(a, b)
-    transpositions = find_displaced_passages(a, b, line_groups, similarity)
+    transpositions = []
+    if include_displacements:
+        if progress:
+            progress(2)
+        if line_groups is None:
+            line_groups = _align_dp(a, b)
+        transpositions = find_displaced_passages(a, b, line_groups, similarity)
     return alignments, alignment_method, transpositions
 
 
@@ -938,7 +959,7 @@ class Handler(SimpleHTTPRequestHandler):
             taxonomy = payload.get("taxonomy") if isinstance(payload.get("taxonomy"), dict) else None
             if "alto" in payload:
                 alto = payload["alto"]
-                a, b = parse_alto_bundle(alto.get("A", []), taxonomy), parse_alto_bundle(alto.get("B", []), taxonomy)
+                a, b = parse_reference_alto(alto.get("A", []), taxonomy), parse_alto_bundle(alto.get("B", []), taxonomy)
             elif "sentences" in payload:
                 a = clean_sentences(payload["sentences"].get("A"))
                 b = clean_sentences(payload["sentences"].get("B"))
@@ -948,7 +969,10 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("Each witness must contain at least one textual unit.")
             # Both uploaded ALTO and frontend-prepared sentence payloads use
             # the same continuous word-stream alignment.
-            alignments, alignment_method, transpositions = align_witness_inputs(a, b, progress=progress if streaming else None)
+            alignments, alignment_method, transpositions = align_witness_inputs(
+                a, b, progress=progress if streaming else None,
+                include_displacements=payload.get("include_displacements") is not False,
+            )
             result = {
                 "witnesses": {"A": a, "B": b},
                 "alignments": alignments,

@@ -90,13 +90,13 @@ messages.en.empty='Select the reference dossier and at least one other witness t
 Object.assign(messages.en,{exportMenu:'Export',aligningWitnesses:'Aligning witnesses…',alignmentComplete:'Alignment complete',titleLines:'Title lines',titleLinesHint:'Select the reference lines to export as TEI headings.',titleLineBoundary:'A title line crosses a genre interval boundary. Include the whole line in one interval.',noTitleLines:'No reference ALTO lines available.'});
 Object.assign(messages.fr,{exportMenu:'Exporter',aligningWitnesses:'Alignement des témoins…',alignmentComplete:'Alignement terminé',titleLines:'Lignes de titre',titleLinesHint:'Sélectionnez les lignes du témoin de référence à exporter comme titres TEI.',titleLineBoundary:'Une ligne de titre chevauche deux intervalles de genre. Placez la ligne entière dans un seul intervalle.',noTitleLines:'Aucune ligne ALTO de référence disponible.'});
 Object.assign(messages.it,{exportMenu:'Esporta',aligningWitnesses:'Allineamento dei testimoni…',alignmentComplete:'Allineamento completo',titleLines:'Righe di titolo',titleLinesHint:'Seleziona le righe del testimone di riferimento da esportare come titoli TEI.',titleLineBoundary:'Una riga di titolo attraversa il confine tra due intervalli di genere. Includi l’intera riga in un solo intervallo.',noTitleLines:'Nessuna riga ALTO di riferimento disponibile.'});
-Object.assign(messages.en,{pairView:'Pair',allViews:'All witnesses',focusView:'Line by line',previousLine:'Previous line',nextLine:'Next line',linePosition:'Line {n} of {total}',facsimiles:'Facsimiles',loadingImages:'Loading facsimiles…',pairReference:'Reference in this comparison',alignmentSteps:'{done}/{total} stages completed · {left} remaining',stage0:'Reading ALTO',stage1:'Aligning words',stage2:'Checking displaced passages'});
-Object.assign(messages.it,{pairView:'Coppia',allViews:'Tutti i testimoni',focusView:'Riga per riga',previousLine:'Riga precedente',nextLine:'Riga successiva',linePosition:'Riga {n} di {total}',facsimiles:'Facsimili',loadingImages:'Caricamento dei facsimili…',pairReference:'Riferimento in questo confronto',alignmentSteps:'{done}/{total} fasi completate · {left} rimanenti',stage0:'Lettura degli ALTO',stage1:'Allineamento delle parole',stage2:'Verifica dei passaggi spostati'});
-Object.assign(messages.fr,{pairView:'Paire',allViews:'Tous les témoins',focusView:'Ligne par ligne',previousLine:'Ligne précédente',nextLine:'Ligne suivante',linePosition:'Ligne {n} sur {total}',facsimiles:'Fac-similés',loadingImages:'Chargement des fac-similés…',pairReference:'Référence de cette comparaison',alignmentSteps:'{done}/{total} étapes terminées · {left} restantes',stage0:'Lecture des ALTO',stage1:'Alignement des mots',stage2:'Vérification des passages déplacés'});
+Object.assign(messages.en,{pairView:'Pair',allViews:'All witnesses',focusView:'Line by line',previousLine:'Previous line',nextLine:'Next line',linePosition:'Line {n} of {total}',facsimiles:'Facsimiles',loadingImages:'Loading facsimiles…',pairReference:'Reference in this comparison',alignmentSteps:'{done}/{total} stages completed · {left} remaining',stage0:'Reading ALTO',stage1:'Aligning words'});
+Object.assign(messages.it,{pairView:'Coppia',allViews:'Tutti i testimoni',focusView:'Riga per riga',previousLine:'Riga precedente',nextLine:'Riga successiva',linePosition:'Riga {n} di {total}',facsimiles:'Facsimili',loadingImages:'Caricamento dei facsimili…',pairReference:'Riferimento in questo confronto',alignmentSteps:'{done}/{total} fasi completate · {left} rimanenti',stage0:'Lettura degli ALTO',stage1:'Allineamento delle parole'});
+Object.assign(messages.fr,{pairView:'Paire',allViews:'Tous les témoins',focusView:'Ligne par ligne',previousLine:'Ligne précédente',nextLine:'Ligne suivante',linePosition:'Ligne {n} sur {total}',facsimiles:'Fac-similés',loadingImages:'Chargement des fac-similés…',pairReference:'Référence de cette comparaison',alignmentSteps:'{done}/{total} étapes terminées · {left} restantes',stage0:'Lecture des ALTO',stage1:'Alignement des mots'});
 messages.en.alignSaved='Alignment restored from project.';
 messages.fr.alignSaved='Alignement restauré depuis le projet.';
 messages.it.alignSaved='Allineamento ripristinato dal progetto.';
-const ALIGNMENT_STAGES=3;
+const ALIGNMENT_STAGES=2;
 const alignmentJobs=new Set();
 let witnessView='pair',focusRow=0;
 let titleLines=new Set(),alignmentsInProgress=0;
@@ -219,7 +219,7 @@ function renderAlignmentProgress(){
  $('alignmentRemaining').textContent=t('alignmentSteps',{done,total,left:total-done});
 }
 async function requestAlignment(payload,update){
- const response=await fetch('/api/align',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(payload)});
+ const response=await fetch('/api/align',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify({...payload,include_displacements:false})});
  if(!response.headers?.get('content-type')?.includes('application/x-ndjson')){
   const data=await response.json();
   if(!response.ok)throw Error(data.error||'Backend error');
@@ -303,13 +303,13 @@ function renderWitnessInputs(){const savedIIIF=Object.fromEntries(witnessIds.map
 function addWitness(){if(witnessIds.length>=10)return;const id=String.fromCharCode(65+witnessIds.length);witnessIds.push(id);rawByWitness[id]=[];names[id]=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+(witnessIds.length-1);images[id]=[];imageStatus[id]=null;renderWitnessInputs();renderComparisonControl();saveBrowserSession()}
 function renderComparisonControl(){const control=$('comparisonControl'),select=$('compareWitness');if(!control||!select)return;const ids=Object.keys(pairResults);control.hidden=!ids.length||witnessView!=='pair';if(!ids.length)return;select.innerHTML=ids.map(id=>`<option value="${id}">${esc(names[id])}</option>`).join('');select.value=pairResults[activeWitness]?activeWitness:ids[0];select.onchange=()=>activatePair(select.value)}
 function activatePair(id,saveCurrent=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid:')||p.alignment_method.includes('bertalign +')||p.alignment_method.includes('global displaced-run recovery')?'alignSaved':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){render();renderMovements();$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
-function render(){
+function render(facsimiles){
  witnessImageObserver?.disconnect();
  saveBrowserSession();
 
  renderGenreEditor();
  $('witnessViews').hidden=!groups.length;
- if(witnessView!=='pair'&&groups.length){renderWitnessComparison();return}
+ if(witnessView!=='pair'&&groups.length){renderWitnessComparison(facsimiles);return}
  if(!groups.length){$('results').innerHTML=`<div class="empty">${t('noAlignment')}</div>`;return}
  const {all,visible}=comparisonRows();
  const entries=all.flatMap(row=>row.entries.filter(entry=>entry.id===activeWitness));
@@ -538,7 +538,7 @@ function renderWitnessImages(rows,sources){
   for(const target of board.querySelectorAll('[data-witness-facsimiles]')){
    const id=target.dataset.witnessFacsimiles;
    const items=id==='A'?row.reference:row.entries.filter(entry=>entry.id===id).flatMap(entry=>entry.right);
-   if(items.length){
+   if(items.length&&!target.firstElementChild){
     target.textContent=t('loadingImages');
     pending.set(target,{id,items});
    }
@@ -586,7 +586,7 @@ function combinedWitnessReading(readings,label,detailsOpen){
  ${readings.map((entry,index)=>witnessReading(entry,false,`${label}.${index+1}`,false)).join('')}
  </details></div>`;
 }
-function renderWitnessComparison(){
+function renderWitnessComparison(facsimiles){
  const {all,visible}=comparisonRows();
  const entries=all.flatMap(row=>row.entries);
  $('totalBadge').textContent=t('unitCount',{n:visible.length,total:all.length});
@@ -624,6 +624,10 @@ function renderWitnessComparison(){
   }).join('')}</div></div>`;
  };
  const showImages=rows=>{
+  if(facsimiles)for(const target of $('results').querySelectorAll('[data-witness-facsimiles]')){
+   const cached=facsimiles.get(facsimilePosition(target));
+   if(cached)target.replaceWith(cached);
+  }
   for(const node of $('results').querySelectorAll('.witness-scroll'))node.scrollLeft=previousScroll.get(node.closest('article').id)||0;
   renderWitnessImages(rows,sources);
  };
@@ -663,8 +667,25 @@ function rowHTML(which,arr,tokens,idx){
  const firstRef=arr[0]?.refs?.[0];
  return `<div class="witness-line"><div class="witness-label">${esc(names[id])}${firstRef?` <a class="page-link" onclick="openImages(${idx})">${esc(firstRef.page||'p.?')}</a>`:''}</div><div class="textline">${line}</div></div>`
 }
-function setVariant(i,k,action){decisions[i]=decisions[i]||{};decisions[i][k]=action;render()}
-function setAll(i,action){let g=groups[i],d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B'),g.spacing_matches);decisions[i]=decisions[i]||{};d.diff.forEach((_,k)=>decisions[i][k]=action);render()}
+function facsimilePosition(target){
+ return `${target.closest('article').id}:${target.dataset.witnessFacsimiles}`;
+}
+function renderReviewDecision(){
+ const results=$('results');
+ const anchor=document.activeElement?.closest('article');
+ const within=anchor&&results.contains(anchor);
+ const unit=within?anchor.id:null,shared=within?anchor.dataset.sharedUnit:null;
+ const before=within?anchor.getBoundingClientRect().top:0;
+ const currentY=window.scrollY;
+ const facsimiles=new Map([...results.querySelectorAll('[data-witness-facsimiles]')]
+  .filter(target=>target.firstElementChild).map(target=>[facsimilePosition(target),target]));
+ render(facsimiles);
+ const after=unit?$(unit):shared?results.querySelector(`[data-shared-unit="${shared}"]`):null;
+ const y=after?window.scrollY+after.getBoundingClientRect().top-before:currentY;
+ window.scrollTo({top:y,behavior:'instant'});
+}
+function setVariant(i,k,action){decisions[i]=decisions[i]||{};decisions[i][k]=action;renderReviewDecision()}
+function setAll(i,action){let g=groups[i],d=compareUnit(groupText(A,g,'A'),groupText(B,g,'B'),g.spacing_matches);decisions[i]=decisions[i]||{};d.diff.forEach((_,k)=>decisions[i][k]=action);renderReviewDecision()}
 function closeTextEditor(){
  const editor=$('focusEditor');
  if(editor?.firstElementChild)editor.innerHTML='';
