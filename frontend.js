@@ -302,7 +302,7 @@ function render(){
  $('pendingBadge').textContent=t('pending',{n:pending,total});
  $('keptBadge').textContent=t('retained',{n:kept});
 }
-function witnessRows(){
+function witnessRows(includeInteriorInsertions=false){
  const ids=Object.keys(pairResults),reference=pairResults[ids[0]].A;
  const sourceIndex=new Map();
  reference.forEach((unit,index)=>{
@@ -319,10 +319,11 @@ function witnessRows(){
   }
   return index;
  }
- const entries=[],insertions=[];
+ const entries=[],insertions=[],previousAnchors=new Map();
  for(const id of ids){
   const pair=pairResults[id];
   let anchor=reference.length;
+  const pairEntries=[];
   for(let index=pair.alignments.length-1;index>=0;index--){
    const group=pair.alignments[index],left=groupItems(pair.A,group,'A'),right=groupItems(pair.B,group,'B');
    if(!left.length&&!right.length)continue;
@@ -335,9 +336,19 @@ function witnessRows(){
     anchor=Math.min(...mapped);
     const end=Math.max(...mapped);
     for(let i=anchor+1;i<=end;i++)parent[root(i)]=root(anchor);
-    entries.push({...entry,anchor});
+    const mappedEntry={...entry,anchor,end};
+    entries.push(mappedEntry);
+    pairEntries.push(mappedEntry);
    }else{
     insertions.push({anchor,entries:[entry],reference:[]});
+    pairEntries.push(entry);
+   }
+  }
+  if(includeInteriorInsertions){
+   let previous;
+   for(const entry of pairEntries.reverse()){
+    if(entry.anchor!==undefined)previous=entry.end;
+    else if(previous!==undefined)previousAnchors.set(entry,previous);
    }
   }
  }
@@ -349,8 +360,15 @@ function witnessRows(){
  });
  for(const entry of entries)rows.get(root(entry.anchor)).entries.push(entry);
  const order=(a,b)=>a.id.localeCompare(b.id)||a.index-b.index;
+ // Keep additions between two fragments of the same reference line in reading order.
+ const separateInsertions=insertions.filter(row=>{
+  const entry=row.entries[0],previous=previousAnchors.get(entry);
+  if(previous!==row.anchor||entry.group.lexical_review)return true;
+  rows.get(root(previous)).entries.push(entry);
+  return false;
+ });
  for(const row of rows.values())row.entries.sort(order);
- return [...rows.values(),...insertions].sort((a,b)=>a.anchor-b.anchor||
+ return [...rows.values(),...separateInsertions].sort((a,b)=>a.anchor-b.anchor||
   Number(!!a.reference.length)-Number(!!b.reference.length)||
   (a.entries.length&&b.entries.length?order(a.entries[0],b.entries[0]):0));
 }
@@ -365,8 +383,9 @@ function witnessEntryReview(entry){
 function witnessReading(entry,showReference){
  const {id,index,left,right,review,diff}=entry,state=review[index]||{};
  const action=(method,label,classes)=>`<button type="button" class="btn ${classes}" onclick="reviewWitnessAction('${id}',${index},'${method}')">${t(label)}</button>`;
- return `<section class="multi-reading">
- ${showReference&&left.length?`<details><summary>${t('pairReference')}</summary><div class="textline">${renderText(diff.aa,index,review)}</div></details>`:''}
+ return `<section class="multi-reading" data-pair-unit="${index+1}">
+ <div class="segment-heading"><button type="button" class="pair-unit-link" onclick="reviewWitnessAction('${id}',${index},'pair')">${t('pairView')} · ${t('unitLabel',{n:index+1})}</button>${entry.uncertain?`<span class="status-note">${t('needsReview')}</span>`:''}</div>
+ ${showReference?`<div class="textline segment-reference"><span class="status-note">${t('pairReference')}</span><br>${left.length?renderText(diff.aa,index,review):`<em>${t('noPassage')}</em>`}</div>`:''}
  <div class="textline">${right.length?renderText(diff.bb,index,review):`<em>${t('noPassage')}</em>`}<div class="status-note">${esc(refs(right))}</div></div>
  ${diff.diff.length?`<div class="controls">${diff.diff.map((variant,k)=>`<span class="variant-item"><b>${esc(variant.a)} → ${esc(variant.b)}</b>
  <button type="button" class="btn btn-light keepmini ${state[k]==='keep'?'chosen':''}" onclick="reviewWitnessAction('${id}',${index},'keep',${k})">${t('keep')}</button>
@@ -375,7 +394,10 @@ function witnessReading(entry,showReference){
 }
 function reviewWitnessAction(id,index,action,variant){
  if(id!==activeWitness)activatePair(id);
- if(action==='edit')editUnit(index,witnessView==='focus');
+ if(action==='pair'){
+  setWitnessView('pair');
+  goToUnit(index);
+ }else if(action==='edit')editUnit(index,witnessView==='focus');
  else if(action==='adjust')adjustUnit(index);
  else setVariant(index,variant,action);
 }
@@ -498,7 +520,7 @@ function renderWitnessImages(rows,sources){
  for(const target of pending.keys())observer.observe(target);
 }
 function renderWitnessComparison(){
- const all=witnessRows().map((row,index)=>({...row,index,entries:row.entries.map(witnessEntryReview)}));
+ const all=witnessRows(true).map((row,index)=>({...row,index,entries:row.entries.map(witnessEntryReview)}));
  const entries=all.flatMap(row=>row.entries);
  const visible=all.filter(row=>viewFilter==='all'||row.entries.some(entry=>
   viewFilter==='variants'?entry.diff.diff.length:viewFilter==='pending'?entry.pending:entry.uncertain));
@@ -523,7 +545,7 @@ function renderWitnessComparison(){
   ${ids.map(id=>{
    const readings=row.entries.filter(entry=>entry.id===id);
    const pairText=readings.flatMap(entry=>entry.left).map(item=>item.text).join(' ');
-   return card(id,readings.length?readings.map(entry=>witnessReading(entry,pairText!==referenceText)).join(''):
+   return card(id,readings.length?readings.map(entry=>witnessReading(entry,readings.length>1||pairText!==referenceText)).join(''):
     `<div class="multi-reading textline"><em>${t('noPassage')}</em></div>`);
   }).join('')}</div></div>`;
  };
@@ -805,7 +827,7 @@ function exportJSON(){try{download(t('jsonName'),JSON.stringify(buildJSONExport(
 function download(name,content,type){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function goToUnit(index){
  if(witnessView!=='pair'){
-  const position=witnessRows().findIndex(row=>row.entries.some(entry=>entry.id===activeWitness&&entry.index===index));
+  const position=witnessRows(true).findIndex(row=>row.entries.some(entry=>entry.id===activeWitness&&entry.index===index));
   if(position<0)return;
   if(viewFilter!=='all'){$('resultFilter').value='all';viewFilter='all'}
   focusRow=position;
@@ -816,7 +838,7 @@ function goToUnit(index){
 if(!$(`unit-${index}`)){ $('resultFilter').value='all';viewFilter='all';render()}const row=$(`unit-${index}`);if(row){row.scrollIntoView({behavior:'smooth',block:'center'});row.classList.add('focus-review');setTimeout(()=>row.classList.remove('focus-review'),1600)}}
 function nextPending(){
  if(witnessView!=='pair'){
-  const pending=witnessRows().map((row,index)=>({row,index})).filter(({row})=>row.entries.some(entry=>witnessEntryReview(entry).pending));
+  const pending=witnessRows(true).map((row,index)=>({row,index})).filter(({row})=>row.entries.some(entry=>witnessEntryReview(entry).pending));
   if(!pending.length){alert(t('noPendingLeft'));return}
   const next=pending.find(item=>item.index>focusRow)||pending[0];
   viewFilter='pending';$('resultFilter').value=viewFilter;jumpWitnessRow(next.index);

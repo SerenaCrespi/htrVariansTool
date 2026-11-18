@@ -576,3 +576,48 @@ test('a multi-line reading has one crop and the full transcription of both sourc
   assert.equal(await page.locator('#facsimileDialog svg polygon').count(),2);
  }finally{await page.close()}
 });
+
+test('Tordi 386 keeps interior additions next to their pair segments in both multi-witness views',async()=>{
+ const page=await browser.newPage();
+ try{
+  await page.goto(url);
+  // Use genuine lexical output without waiting on displaced-passage suggestions.
+  const {execFileSync}=require('node:child_process');
+  const fixture=JSON.parse(execFileSync('python3',['-B','-c',`
+import json, sys
+from pathlib import Path
+sys.path.insert(0, 'backend')
+import app
+def load(name):
+    return app.parse_alto_bundle([{'name': p.name, 'text': p.read_text()} for p in sorted(Path('samples', name).glob('*.xml'))])
+a, b = load('Malmantile_II.IV.232'), load('Malmantile_Tordi.386')
+print(json.dumps({'witnesses': {'A': a, 'B': b}, 'alignments': app.align_alto_words(a, b),
+                  'alignment_method': 'word-level Levenshtein', 'possible_transpositions': [], 'frequent_ambiguous_cases': []}))
+`],{cwd:path.join(__dirname,'..'),maxBuffer:16*1024*1024}));
+  await page.route('**/api/align',route=>route.fulfill({json:fixture}));
+  const sample=path.join(__dirname,'../samples');
+  await page.locator('#fileA').setInputFiles(['143223','143230','143236'].map(number=>path.join(sample,'Malmantile_II.IV.232',`IMG_20250905_${number}.xml`)));
+  await page.waitForFunction(()=>rawByWitness.A.length===3&&pendingProjectOperations===0);
+  await page.locator('#addWitnessBtn').click();
+  await page.locator('#fileB').setInputFiles(['102224','104622','104628','104633'].map(number=>path.join(sample,'Malmantile_Tordi.386',`IMG_20250905_${number}.xml`)));
+  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+  await page.getByRole('button',{name:'All witnesses',exact:true}).click();
+  const row=page.locator('.multi-row').filter({has:page.locator('.witness-reference',{hasText:'faceva istanza al Poeta della presente Composizione'})});
+  const fragments=row.locator('.witness-card[data-witness="B"] [data-pair-unit]');
+  assert.equal(await fragments.count(),5);
+  const texts=await fragments.allTextContents();
+  assert.match(texts[1],/Principe Leopoldo/);
+  assert.match(texts[3],/in occasioni di mandargli/);
+  const unit=await fragments.nth(1).getAttribute('data-pair-unit');
+  await fragments.nth(1).locator('.pair-unit-link').click();
+  const pair=page.locator(`#unit-${Number(unit)-1}`);
+  assert.match(await pair.innerText(),/Principe Leopoldo/);
+  await page.getByRole('button',{name:'Line by line',exact:true}).click();
+  await page.evaluate(index=>goToUnit(index),Number(unit)-1);
+  assert.deepEqual(await page.locator('.witness-card[data-witness="B"] [data-pair-unit]').evaluateAll(nodes=>nodes.map(node=>node.dataset.pairUnit)),
+   [Number(unit)-1,Number(unit),Number(unit)+1,Number(unit)+2,Number(unit)+3].map(String));
+  const additionExport=await page.evaluate(()=>buildJSONExport().units.find(unit=>
+   Object.values(unit.readings).some(reading=>reading.segments.some(segment=>segment.text.includes('Principe Leopoldo')))));
+  assert.equal(additionExport.type,'addition');
+ }finally{await page.close()}
+});
