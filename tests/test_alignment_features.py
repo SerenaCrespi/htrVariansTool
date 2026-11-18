@@ -128,5 +128,23 @@ class ALTOTests(unittest.TestCase):
             self.assertEqual(' '.join(item['text'] for row in rows for item in row[side]), ' '.join(source))
 
 
+    def test_tordi435_mando_phrase_outweighs_crossing_single_word_anchor(self):
+        samples = Path(__file__).resolve().parents[1] / 'samples'
+
+        def load(dossier):
+            return parse_alto_bundle([
+                {'name': path.name, 'text': path.read_text(encoding='utf-8')}
+                for path in sorted((samples / f'Malmantile_{dossier}').glob('*.xml'))
+            ])
+
+        rows = align_alto_words(load('II.IV.232'), load('Tordi.435'))
+        phrases = [(' '.join(item['text'] for item in row['aItems']),
+                    ' '.join(item['text'] for item in row['bItems'])) for row in rows]
+        matches = [(left, right) for left, right in phrases if 'mando a VAS' in left]
+        self.assertEqual(len(matches), 1)
+        self.assertIn('mando a VAS., ꝓ che vedendo ella', matches[0][1])
+        self.assertFalse(any(not left and 'mando a VAS' in right for left, right in phrases))
+
+
 if __name__=='__main__':
     unittest.main()

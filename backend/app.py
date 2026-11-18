@@ -251,6 +251,25 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
         # between a short title page and unrelated running text.
         blocks = [block for block in blocks
                   if block.size != 1 or len(ak[block.a]) > 2]
+    # An isolated exact word can cross a longer match in the gap, e.g. the
+    # first "che" in A against the "che" after "mando a VAS." in B.
+    # Release only that singleton and let the local DP realign both readings.
+    kept_blocks = []
+    for index, block in enumerate(blocks):
+        if block.size == 1 and index + 1 < len(blocks):
+            before = blocks[index - 1] if index else None
+            after = blocks[index + 1]
+            a0 = before.a + before.size if before else 0
+            b0 = before.b + before.size if before else 0
+            if max(after.a - a0, after.b - b0) <= 64:
+                competing = SequenceMatcher(None, ak[a0:after.a], bk[b0:after.b], autojunk=False).find_longest_match()
+                ai, bi, size = a0 + competing.a, b0 + competing.b, competing.size
+                crosses = ((ai >= block.a + 1 and bi + size <= block.b)
+                           or (bi >= block.b + 1 and ai + size <= block.a))
+                if size >= 3 and crosses:
+                    continue
+        kept_blocks.append(block)
+    blocks = kept_blocks
     ops = []
 
     def joined_spans(words, start, end):
@@ -261,7 +280,11 @@ def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, 
                 parts = words[stop - length:stop]
                 keys_by_word = [word["key"].replace(" ", "") for word in parts]
                 joined = "".join(keys_by_word)
-                if len(joined) < 5:
+                if length == 2 and parts[0]["text"] == "ꝓ" and keys_by_word[1] == "che":
+                    keys.setdefault("perche", []).append((length, 1))
+                if keys_by_word == ["che", "io"]:
+                    keys.setdefault("chio", []).append((length, 1))
+                if len(joined) < 5 and not (length == 1 and parts[0]["text"].replace("’", "'").lower() == "ch'io"):
                     continue
                 keys.setdefault(joined, []).append((length, 0))
                 # Diplomatic ALTO examples: ch'i non / ch'io non, and capital I
