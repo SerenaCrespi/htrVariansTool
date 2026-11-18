@@ -414,24 +414,31 @@ function witnessSourceLines(items,source){
  }
  return [...lines.values()];
 }
+function altoRectangle(value){
+ const parts=String(value||'').split(',');
+ if(parts.length!==4||parts.some(part=>!part.trim()))return null;
+ const [x,y,w,h]=parts.map(Number);
+ return [x,y,w,h].every(Number.isFinite)&&w>0&&h>0?[[x,y],[x+w,y],[x+w,y+h],[x,y+h]]:null;
+}
+function altoLineOutline(ref){
+ const points=String(ref?.polygon||'').trim().split(/[\s,]+/).map(Number);
+ if(points.length>=6&&points.length%2===0&&points.every(Number.isFinite))
+  return Array.from({length:points.length/2},(_,n)=>points.slice(2*n,2*n+2));
+ return altoRectangle(ref?.coords);
+}
+function pageWithOutline(url,ref){
+ const outline=altoLineOutline(ref),title=`${t('fullPage')} ${ref?.page||''} · ${t('line')} ${ref?.line||''}`;
+ const width=Number(ref?.page_width)||0,height=Number(ref?.page_height)||0;
+ return `<span class="outlined-page"><img class="full-page" src="${esc(url)}" alt="${esc(title)}">${outline?
+  `<svg aria-hidden="true" preserveAspectRatio="none" data-page-width="${width}" data-page-height="${height}" ${width>0&&height>0?`viewBox="0 0 ${width} ${height}"`:'hidden'}><polygon points="${outline.map(point=>point.join(',')).join(' ')}"></polygon></svg>`:''}</span>`;
+}
 function facsimileAreas({ref,words,selected}){
- const box=value=>{
-  const parts=String(value||'').split(',');
-  if(parts.length!==4||parts.some(part=>!part.trim()))return null;
-  const [x,y,w,h]=parts.map(Number);
-  return [x,y,w,h].every(Number.isFinite)&&w>0&&h>0?[[x,y],[x+w,y],[x+w,y+h],[x,y+h]]:null;
- };
  if(!selected.size)return [];
- if(selected.size===words.length){
-  const points=String(ref.polygon||'').trim().split(/[\s,]+/).map(Number);
-  if(points.length>=6&&points.length%2===0&&points.every(Number.isFinite))
-   return [Array.from({length:points.length/2},(_,n)=>points.slice(2*n,2*n+2))];
-  return [box(ref.coords)].filter(Boolean);
- }
+ if(selected.size===words.length)return [altoLineOutline(ref)].filter(Boolean);
  const boxes=ref.word_boxes||[];
  const contextBoxes=new Set(words.flatMap((_,index)=>selected.has(index)?[]:[boxes[index]]));
  return [...new Set([...selected].map(index=>boxes[index]))]
-  .filter(value=>!contextBoxes.has(value)).map(box).filter(Boolean);
+  .filter(value=>!contextBoxes.has(value)).map(altoRectangle).filter(Boolean);
 }
 async function witnessThumbnail(id,line){
  const {ref,words,selected}=line,item=resolveWitnessImage(id,ref);
@@ -444,7 +451,7 @@ async function witnessThumbnail(id,line){
  const thumbnail=crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:
   item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref.page||'')}">`:
    `<div class="status-note">${t('missingImage')}</div>`;
- const preview=item?`<a href="${esc(item.url)}" target="_blank" rel="noopener" title="${t('fullPage')}">${thumbnail}</a>`:thumbnail;
+ const preview=item?`<button type="button" class="facsimile-open" aria-label="${esc(`${t('fullPage')} · ${names[id]} · ${ref.line||''}`)}">${thumbnail}</button><template>${pageWithOutline(item.url,ref)}</template>`:thumbnail;
  return `<figure>${preview}${transcription}</figure>`;
 }
 function renderWitnessImages(rows,sources){
@@ -579,8 +586,12 @@ async function saveEdit(i){
  // Word-difference indices can change in the edited unit. Invalidate its
  // decisions only; other units and witness comparisons retain their reviews.
  // Keep the unedited side's ALTO fragments intact as well.
- if(aa!==previousA){const refs=groupItems(A,g,'A').flatMap(x=>x.refs||[]).map(ref=>({...ref,line_text:aa}));g.aItems=aa?[{text:aa,refs}]:[]}
- if(bb!==previousB){const refs=groupItems(B,g,'B').flatMap(x=>x.refs||[]).map(ref=>({...ref,line_text:bb}));g.bItems=bb?[{text:bb,refs}]:[]}
+ function revisedItems(items,text){
+  const refs=items.flatMap(item=>item.refs||[]).map(ref=>({...ref,line_text:text}));
+  return text?[{text,refs}]:[];
+ }
+ if(aa!==previousA){const items=groupItems(A,g,'A');g.originalA??=items;g.aItems=revisedItems(items,aa)}
+ if(bb!==previousB){const items=groupItems(B,g,'B');g.originalB??=items;g.bItems=revisedItems(items,bb)}
  g.similarity=aa&&bb?similarityClient(aa,bb):0;
  pairResults[activeWitness].alignments=groups;
  decisions={...decisions};delete decisions[i];
@@ -617,7 +628,7 @@ if(areas.length){
  context.strokeStyle='#b98428';context.lineWidth=2;context.stroke();
 }
 resolve(canvas.toDataURL('image/png'))}catch(e){reject(e)}};image.onerror=()=>reject(Error('Immagine non leggibile'));image.src=imageUrl})}
-async function sourceLineCard(which,ref){const id=which==='B'?activeWitness:which,item=chooseImage(which,ref);let crop=null;if(item&&ref)try{crop=await cropLine(item.url,ref)}catch(e){}const text=ref?.line_text||t('notAvailable');return `<figure class="source-line-card"><figcaption><b>${esc(names[id])}</b><span>${esc(ref?`${ref.alto_file||''} · ${t('page')} ${ref.page} · ${t('line')} ${ref.line}`:'')}</span></figcaption>${crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref?.page||'')}">`:`<div class="no-image">${t('missingImage')}</div>`}${item?`<details class="full-page-details"><summary>${t('fullPage')}</summary><img class="full-page" src="${esc(item.url)}" alt="${t('fullPage')} ${esc(ref?.page||'')}"></details>`:''}<div class="image-reading">${esc(text)}</div></figure>`}
+async function sourceLineCard(which,ref){const id=which==='B'?activeWitness:which,item=chooseImage(which,ref);let crop=null;if(item&&ref)try{crop=await cropLine(item.url,ref)}catch(e){}const text=ref?.line_text||t('notAvailable');return `<figure class="source-line-card"><figcaption><b>${esc(names[id])}</b><span>${esc(ref?`${ref.alto_file||''} · ${t('page')} ${ref.page} · ${t('line')} ${ref.line}`:'')}</span></figcaption>${crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref?.page||'')}">`:`<div class="no-image">${t('missingImage')}</div>`}${item?`<details class="full-page-details"><summary>${t('fullPage')}</summary>${pageWithOutline(item.url,ref)}</details>`:''}<div class="image-reading">${esc(text)}</div></figure>`}
 async function openImages(unitIndex){const g=groups[unitIndex],ra=groupItems(A,g,'A').flatMap(x=>x.refs||[]),rb=groupItems(B,g,'B').flatMap(x=>x.refs||[]);await renderImageCompare(t('lineCompare',{n:unitIndex+1}),ra,rb)}async function renderImageCompare(title,ra,rb){const modal=$('modal');modal.innerHTML=`<div class="iiif-modal"><div class="iiif-box image-compare"><div class="iiif-head"><span>${esc(title)}</span><button class="btn btn-outline" onclick="$('modal').innerHTML=''">${t('close')}</button></div><div class="line-compare"><section class="line-witness"><h3>${esc(names.A)} <small>${t('rows',{n:ra.length})}</small></h3><div id="lineA"></div></section><section class="line-witness"><h3>${esc(names[activeWitness])} <small>${t('rows',{n:rb.length})}</small></h3><div id="lineB"></div></section></div><p class="crop-note">${t('cropNote')}</p></div></div>`;const [cardsA,cardsB]=await Promise.all([Promise.all(ra.map(r=>sourceLineCard('A',r))),Promise.all(rb.map(r=>sourceLineCard('B',r)))]);if(!document.getElementById('lineA'))return;$('lineA').innerHTML=cardsA.join('')||`<div class="no-image">${t('noPassageIn',{w:'A'})}</div>`;$('lineB').innerHTML=cardsB.join('')||`<div class="no-image">${t('noPassageIn',{w:'B'})}</div>`}
 function currentReview(id){return id===activeWitness?{decisions,movementDecisions}:pairReviews[id]||{decisions:{},movementDecisions:{}}}
 function selectedVariantEdits(id){const pair=pairResults[id];if(!pair)return[];const state=currentReview(id).decisions||{},out=[];let offset=0;for(let gi=0;gi<pair.alignments.length;gi++){const g=pair.alignments[gi],left=groupText(pair.A,g,'A'),right=groupText(pair.B,g,'B'),d=compareUnit(left,right),selected=new Set(Object.entries(state[gi]||{}).filter(([,v])=>v==='keep').map(([k])=>Number(k)));for(const k of selected){const aPos=[];d.aa.forEach((x,pos)=>{if(x.c==='var'&&x.v===k)aPos.push(pos)});const bTokens=d.bb.filter(x=>x.c==='var'&&x.v===k).map(x=>x.t);let start=aPos.length?aPos[0]:d.aa.findIndex(x=>x.c==='var'&&x.v>k);if(start<0)start=d.aa.length;const end=aPos.length?aPos[aPos.length-1]+1:start;out.push({id,a0:offset+start,a1:offset+end,tokens:bTokens,group:gi,variant:k})}offset+=left.split(/\s+/).filter(Boolean).length}return out}
@@ -696,6 +707,57 @@ function confirmTeiExport(){
   saveBrowserSession();download(t('teiName'),xml,'application/tei+xml');$('teiExportDialog').close();teiExportDraft=null;
  }catch(error){$('teiExportError').textContent=exportError(error)}
 }
+function jsonSourceRef(ref){
+ return {alto_file:ref.alto_file||'',page:ref.page||'',line:ref.line,
+  ...(ref.image_file?{image_file:ref.image_file}:{}),...(ref.coords?{coords:ref.coords}:{}),
+  ...(ref.polygon?{polygon:ref.polygon}:{}),...(ref.page_width?{page_width:ref.page_width}:{}),
+  ...(ref.page_height?{page_height:ref.page_height}:{})};
+}
+function jsonUnitReadings(ids,idMap,ranges){
+ const canonical=Object.fromEntries([['A',pairResults[ids[0]].A],...ids.map(id=>[id,pairResults[id].B])].map(([id,units])=>[
+  id,new Map(units.flatMap(unit=>unit.refs||[]).map(ref=>[VariansExport.sourceLineKey(ref),ref]))
+ ]));
+ function reading(items,id,original){
+  const refs=new Map();
+  for(const item of (items.length?items:original||[]))for(const ref of item.refs||[]){
+   const key=VariansExport.sourceLineKey(ref);
+   if(key&&!refs.has(key))refs.set(key,canonical[id].get(key)||ref);
+  }
+  return {text:items.map(item=>item.text).filter(Boolean).join(' '),
+   originalText:original?original.map(item=>item.text).filter(Boolean).join(' '):null,
+   sources:[...refs.values()].map(ref=>({...jsonSourceRef(ref),lineText:ref.line_text||''}))};
+ }
+ const occurrences=new Map();
+ return witnessRows().map((row,index)=>{
+  const reference=reading(row.reference,'A'),addition=row.reference.length===0;
+  const anchor=addition?reading(row.entries[0].right,row.entries[0].id):reference;
+  const sourceKeys=anchor.sources.map(ref=>[ref.alto_file,ref.page,ref.line].map(encodeURIComponent).join('/'));
+  const base=`${addition?'addition:'+idMap[row.entries[0].id]:'reference'}:${sourceKeys.join('+')||row.anchor+1}`;
+  const count=(occurrences.get(base)||0)+1;occurrences.set(base,count);
+  const variants=[];
+  const readings=Object.fromEntries(ids.map(id=>{
+   const segments=row.entries.filter(entry=>entry.id===id).map(entry=>{
+    const {diff,review,group,uncertain}=witnessEntryReview(entry);
+    const segment=entry.index+1;
+    const text=reading(entry.right,id,group.originalB),comparisonReference=reading(entry.left,'A',group.originalA);
+    for(const [i,variant] of diff.diff.entries()){
+     const choice=review[entry.index]?.[i];
+     variants.push({witness:idMap[id],segment,index:i+1,reference:variant.a==='∅'?null:variant.a,
+      reading:variant.b==='∅'?null:variant.b,status:choice==='keep'?'retained':choice==='ignore'?'dismissed':'pending'});
+    }
+    return {...text,segment,status:text.text?(addition?'addition':'aligned'):'omission',
+     requiresReview:uncertain,similarity:group.similarity,alignmentSource:group.alignment_source||'lexical',
+     reference:comparisonReference};
+   });
+   return [idMap[id],{status:!segments.length?'unaligned':segments.every(segment=>segment.status==='omission')?'omission':addition?'addition':'aligned',segments}];
+  }));
+  const referenceSegments=row.entries.filter(entry=>entry.id===ids[0]).map(entry=>entry.index+1);
+  const genres=[...new Set(ranges.filter(range=>referenceSegments.some(segment=>segment>=range.start&&segment<=range.end)).map(range=>range.genre))];
+  const hasTitle=reference.sources.some(ref=>titleLines.has(VariansExport.sourceLineKey(ref)));
+  return {id:count===1?base:`${base}:${count}`,number:index+1,type:addition?'addition':'reference',
+   reference,structure:{referenceSegments,genres,hasTitle},readings,variants};
+ });
+}
 function buildJSONExport(){
  const ids=Object.keys(pairResults);if(!ids.length)throw Error(t('noAlignment'));
  const units=exportReferenceUnits(),idMap=exportIdentifiers(),ranges=effectiveGenreRanges(units.length);
@@ -703,9 +765,11 @@ function buildJSONExport(){
  const titles=[...referenceTitleOptions(units)].flatMap(([key,ref])=>titleLines.has(key)
   ? [{alto_file:ref.alto_file||'',page:ref.page||'',line:ref.line}] : []);
  return {
+  format:'varians-collation',version:1,
   reference:{id:idMap.A,name:names.A},
   witnesses:Object.fromEntries(ids.map(id=>[idMap[id],names[id]])),
   structure:{comparisonWitness:idMap[ids[0]],ranges,...(titles.length?{titleLines:titles}:{})},
+  units:jsonUnitReadings(ids,idMap,ranges),
   comparisons:Object.fromEntries(ids.map(id=>{const p=pairResults[id];return[idMap[id],{alignmentMethod:p.alignment_method,semanticFallback:p.semantic_fallback,alignments:p.alignments.map((g,i)=>({unit:i+1,readingReference:groupText(p.A,g,'A'),readingWitness:groupText(p.B,g,'B'),sourceReference:refs(groupItems(p.A,g,'A')),sourceWitness:refs(groupItems(p.B,g,'B')),decisions:currentReview(id).decisions[i]||{},similarity:g.similarity,alignmentSource:g.alignment_source||'lexical',requiresReview:!!g.semantic_review}))}]}))
  };
 }
@@ -772,6 +836,7 @@ function validateProject(project){
   if(id==='A'||!ids.includes(id)||!obj(p)||!units(p.A)||!units(p.B)||!Array.isArray(p.alignments)||typeof p.alignment_method!=='string'||!Array.isArray(p.possible_transpositions)||!Array.isArray(p.frequent_ambiguous_cases))fail();
   for(const g of p.alignments){
    if(!obj(g)||typeof g.similarity!=='number'||!Number.isFinite(g.similarity))fail();
+   if(['originalA','originalB'].some(key=>g[key]!==undefined&&!units(g[key])))fail();
    for(const [side,arr] of [['a',p.A],['b',p.B]]){
     if(g[side+'Items']!==undefined){if(!units(g[side+'Items']))fail()}
     else if(!Number.isInteger(g[side+'0'])||!Number.isInteger(g[side+'1'])||g[side+'0']<0||g[side+'1']<g[side+'0']||g[side+'1']>arr.length)fail();
@@ -948,6 +1013,21 @@ function setExportMenu(open){
  exportButton.setAttribute('aria-expanded',String(open));
 }
 exportButton.onclick=()=>setExportMenu(exportOptions.hidden);
+$('closeFacsimile').onclick=()=>$('facsimileDialog').close();
+$('facsimileDialog').addEventListener('close',()=>{if(!$('facsimileDialog').open)$('facsimilePage').replaceChildren()});
+document.addEventListener?.('click',event=>{
+ const trigger=event.target.closest?.('.facsimile-open');
+ if(!trigger)return;
+ $('facsimilePage').replaceChildren(trigger.nextElementSibling.content.cloneNode(true));
+ $('facsimileDialog').showModal();
+});
+document.addEventListener?.('load',event=>{
+ const image=event.target,svg=image.matches?.('.outlined-page > img')&&image.nextElementSibling;
+ if(!svg||!svg.hasAttribute('hidden'))return;
+ const width=Number(svg.dataset.pageWidth)||image.naturalWidth;
+ const height=Number(svg.dataset.pageHeight)||image.naturalHeight;
+ if(width>0&&height>0){svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.removeAttribute('hidden')}
+},true);
 document.addEventListener?.('click',event=>{
  if(!exportOptions.hidden&&!exportButton.contains(event.target)&&!exportOptions.contains(event.target))setExportMenu(false);
 });

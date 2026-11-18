@@ -239,6 +239,30 @@ after confirming if you want to retain the settings between sessions. Earlier
 projects without interval settings still open using their saved uniform genre.
 The decisions JSON also includes the confirmed intervals.
 
+### Collation JSON
+
+**Export → JSON** produces a `varians-collation` document (version 1).
+`units` groups readings by reference passage. IDs use ALTO file, page and line
+when available. An addition has its own unit anchored to the contributing
+witness. Source-less passages fall back to their position in the collation.
+
+Each unit carries structured source links, witness readings, editorial
+variants and the corresponding genre and title information. A reading with
+`status: "unaligned"` has no corresponding segment in that comparison.
+`status: "omission"` indicates a segment with an empty witness reading.
+Each segment's `requiresReview` flags uncertain alignment independently of
+that status. `originalText` records the segment before a correction when
+available. The source ALTO line remains available in `sources[].lineText`.
+The existing `comparisons` field remains available for pair-based consumers.
+
+For example, this command lists retained variants by unit and witness:
+
+```sh
+jq -r '.units[] | .id as $unit | .variants[] |
+  select(.status == "retained") |
+  [$unit, .witness, (.reference // ""), (.reading // "")] | @tsv' collation-decisions.json
+```
+
 ### Witness identifiers in JSON and TEI
 
 Exported witness IDs derive from the names assigned during import, with the same
