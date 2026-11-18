@@ -797,3 +797,36 @@ test('removing a witness preserves the other comparison and survives reload',asy
    {ids:['A','C','B'],stored:1,comparisons:[],reference:0});
  }finally{await page.close()}
 });
+
+test('the variants visualizer opens real TEI and JSON exports in a separate tab',async()=>{
+ const page=await browser.newPage();
+ try{
+  await page.goto(url);
+  await upload(page,'#fileA',['Prima riga','Seconda riga']);
+  await page.locator('#addWitnessBtn').click();
+  await upload(page,'#fileB',['Prima strofa','Seconda riga']);
+  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+  await page.getByRole('button',{name:'Keep',exact:true}).first().click();
+  const tei=await download(page,'#exportTei');
+  const json=await download(page,'#exportJson');
+  const [viewer]=await Promise.all([page.waitForEvent('popup'),page.locator('#openVisualizer').click()]);
+  const input=viewer.locator('#export-file');
+  await input.setInputFiles({name:'edition.xml',mimeType:'application/xml',buffer:Buffer.from(tei)});
+  await viewer.getByText('TEI edition',{exact:true}).waitFor();
+  assert.match(await viewer.locator('#content > p').innerText(),/Prima riga Seconda riga/);
+  await viewer.getByRole('button',{name:'Next variant'}).click();
+  assert.match(await viewer.locator('#details').innerText(),/app-1[\s\S]*strofa/);
+  await viewer.locator('#wit').selectOption({index:2});
+  assert.match(await viewer.locator('#content > p').innerText(),/Prima strofa Seconda riga/);
+  await viewer.locator('#showAll').uncheck();
+  assert.match(await viewer.locator('#content > p').innerText(),/Prima strofa Seconda riga/);
+  await viewer.locator('#showAll').check();
+  await viewer.getByRole('button',{name:'Next variant'}).click();
+  await input.setInputFiles({name:'edition.json',mimeType:'application/json',buffer:Buffer.from(json)});
+  await viewer.getByText('JSON collation',{exact:false}).waitFor();
+  await viewer.getByRole('button',{name:'Next variant'}).click();
+  assert.match(await viewer.locator('#details').innerText(),/Retained[\s\S]*riga → strofa/);
+  await viewer.locator('#wit').selectOption({index:2});
+  assert.match(await viewer.locator('#content').innerText(),/Prima strofa[\s\S]*Seconda riga/);
+ }finally{await page.context().close()}
+});

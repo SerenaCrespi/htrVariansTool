@@ -903,7 +903,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(404)
                 return
             self.path = path
-        elif path in {"/frontend.js", "/export-support.js"}:
+        elif path in {
+            "/frontend.js", "/export-support.js",
+            "/variants-visualizer.html", "/variants-visualizer.js",
+        }:
             self.path = path
         elif path.startswith("/assets/"):
             name = Path(path).name

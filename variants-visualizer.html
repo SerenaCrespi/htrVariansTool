@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Variants Visualizer</title>
+<style>
+:root{--ink:#24242a;--muted:#74747d;--paper:#fff;--bg:#f3f2f0;--accent:#7c2944;--line:#e6e1df;--gold:#fff1cf}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 Georgia,"Times New Roman",serif}
+header{background:#38232d;color:white;padding:25px max(22px,calc((100vw - 1120px)/2)) 22px}header h1{font-size:24px;margin:0 0 3px;font-weight:600}header p{margin:0;color:#e6dce0;font:14px/1.5 system-ui,sans-serif}
+main{max-width:1120px;margin:24px auto;padding:0 20px}.toolbar{position:sticky;top:0;z-index:2;background:#fff;box-shadow:0 4px 14px #0000000d;border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin-bottom:20px;font:14px system-ui,sans-serif;display:flex;gap:12px 20px;align-items:center;flex-wrap:wrap}
+label{font-weight:600}select,button{font:inherit;border:1px solid #d3ccca;border-radius:6px;padding:7px 10px;background:white;color:var(--ink)}button{cursor:pointer}button:hover{border-color:var(--accent);color:var(--accent)}.toggle{display:flex;gap:8px;align-items:center;font-weight:400}.counter{margin-left:auto;color:var(--muted)}
+#content{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:clamp(22px,5vw,60px);box-shadow:0 6px 24px #28151d09}.section{margin:0 0 40px}.section h2,#content > h2{font-size:21px;line-height:1.35;text-align:center;letter-spacing:.04em;margin:0 0 22px;color:#4d2938}.section h2 span{display:block}.section p{margin:0 0 1.2em;text-align:justify;white-space:pre-wrap}.poem{margin:1.2em auto 1.8em;max-width:760px}.verse{min-height:1.65em;padding-left:2.5em;text-indent:-2.5em;white-space:pre-wrap}.apparatus{border:0;font:inherit;color:inherit;display:inline;position:relative;background:var(--gold);border-bottom:1px dotted #a37020;border-radius:2px;cursor:pointer;padding:0 1px}.apparatus:hover{background:#ffe7a5}.apparatus.active{background:#ffdc7b;outline:1px solid #d3992f}.empty{color:#aaa}.details{font:14px/1.5 system-ui,sans-serif;background:#fffaf0;border-left:3px solid #cf9833;padding:10px 13px;margin:-.45em 0 1.1em;border-radius:0 5px 5px 0}.details b{color:#5b3640}.details div+div{margin-top:5px}.note{color:var(--muted);font:13px system-ui,sans-serif;margin-top:15px}.error{padding:18px;background:#fff1f0;border:1px solid #e7b7b3;border-radius:8px;font:14px/1.5 system-ui,sans-serif}[hidden]{display:none!important}.plain-reading{white-space:pre-wrap}.upload{margin:0 0 18px;font:14px system-ui,sans-serif}.back{color:white;font:14px system-ui,sans-serif}.apparatus[aria-expanded="true"]{background:#ffdc7b}.details{margin-top:16px}
+@media(max-width:650px){.counter{margin-left:0;width:100%}#content{padding:22px 18px}.section p{text-align:left}}
+</style>
+</head>
+<body>
+<header>
+<a class="back" href="/">← Varians workspace</a>
+<h1>Variants Visualizer</h1>
+<p>Read a collation as an edition and compare witness readings.</p>
+</header>
+<main>
+<div class="upload">
+<label for="export-file">Open a Varians export</label>
+<input id="export-file" type="file" accept=".tei,.xml,.json,application/xml,text/xml,application/json">
+</div>
+<div class="toolbar" id="toolbar" hidden>
+<label for="wit">Witness</label><select id="wit"></select>
+<label class="toggle"><input id="showAll" type="checkbox" checked> Highlight variants</label>
+<button id="prev" type="button">← Previous variant</button><button id="next" type="button">Next variant →</button>
+<span class="counter" id="counter" role="status"></span>
+</div>
+<p id="status" role="status">Choose a TEI XML or JSON file from the Varians Export menu.</p>
+<article id="content" aria-label="Edition" hidden></article>
+<aside id="details" class="details" aria-label="Variant readings" aria-live="polite" hidden></aside>
+</main>
+<script src="/variants-visualizer.js" defer></script>
+</body>
+</html>
