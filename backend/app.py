@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Local ALTO collation backend with optional Bertalign and lexical DP.
+"""Local ALTO collation backend with lexical dynamic programming.
 
 Processing overview:
 1. Parse ALTO XML while preserving source pointers.
 2. Align the continuous word streams and project results onto review rows.
 3. Provide independent displaced-passage suggestions.
-4. Automatically recover weak passages with validated Bertalign anchors when available.
 """
 from __future__ import annotations
 
@@ -22,7 +21,6 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 import xml.etree.ElementTree as ET
 
-import automatic_semantic
 
 from alto_support import ancestors, resolve_tagrefs, tag_definitions
 from relocations import find_displaced_passages, summarize_ambiguities
@@ -194,31 +192,9 @@ def similarity(left: str, right: str) -> float:
 
 
 def align(a: list[dict], b: list[dict], return_method: bool = False):
-    """Align witnesses in three passes while preserving ALTO line references.
-
-    Bertalign, when installed, supplies semantic anchors. Lexical dynamic
-    programming refines those anchors; a final monotonic word-level pass can
-    reconsider nearby line boundaries across adjacent anchors. The global
-    retrieval pass remains a review suggestion layer in ``relocations.py``.
-    """
-    # Pass 1: ask Bertalign for coarse semantic spans. It is optional; a missing
-    # package or a failed alignment returns None and activates the lexical path.
-    coarse = _bertalign_spans(a, b)
-    if coarse is not None:
-        # Pass 2: refine each proposed span with line-level lexical DP, keeping
-        # global offsets so the result still points into the original lists.
-        refined = []
-        for a0, a1, b0, b1 in coarse:
-            refined.extend(_align_dp(a[a0:a1], b[b0:b1], a_offset=a0, b_offset=b0))
-        # Keep the public method label stable: the frontend maps this exact
-        # value to its Bertalign status message.
-        method = "bertalign + weighted Levenshtein"
-    else:
-        # Fallback: align the complete ordered line sequences lexically.
-        refined = _align_dp(a, b)
-        method = "weighted Levenshtein fallback (Bertalign unavailable)"
-    # Pass 3: first handle clear suffix/prefix overlaps, then check pairs of
-    # neighboring groups even when their shapes differ (for example 1:1 + 1:2).
+    """Align lines lexically, then correct drift across neighboring boundaries."""
+    refined = _align_dp(a, b)
+    method = "weighted Levenshtein"
     refined = _merge_line_boundary_drift(a, b, refined)
     result = _recover_boundary_drift(a, b, refined)
     return (result, method) if return_method else result
@@ -744,67 +720,6 @@ def _compact_alignment_groups(groups: list[dict], a: list[dict], b: list[dict]) 
     return compact
 
 
-def _bertalign_spans(a: list[dict], b: list[dict]) -> list[tuple[int, int, int, int]] | None:
-    """Return Bertalign line-index spans, or None when its optional runtime is absent."""
-    # Bertalign is deliberately optional at runtime. Callers can inspect the
-    # returned method label to distinguish this path from the lexical fallback.
-    try:
-        from bertalign import Bertalign
-    except ImportError:
-        return None
-    left = "\n".join(unit["text"].replace("\n", " ") for unit in a)
-    right = "\n".join(unit["text"].replace("\n", " ") for unit in b)
-    if not left.strip() or not right.strip():
-        return None
-    try:
-        aligner = Bertalign(left, right, is_split=True)
-        aligner.align_sents()
-        pairs = list(aligner.sent_pairs())
-    except Exception as exc:
-        print(f"[align] Bertalign unavailable for this pair; using lexical DP only: {exc}")
-        return None
-    spans = []
-    ai = bi = 0
-    for src_segment, tgt_segment in pairs:
-        x = _segment_line_count(src_segment, a, ai)
-        y = _segment_line_count(tgt_segment, b, bi)
-        if x is None or y is None:
-            print("[align] Bertalign segments could not be mapped to ALTO lines; using lexical DP only")
-            return None
-        if x == 0 and y == 0:
-            continue
-        if ai + x > len(a) or bi + y > len(b):
-            print("[align] Bertalign output could not be mapped to ALTO lines; using lexical DP only")
-            return None
-        spans.append((ai, ai + x, bi, bi + y))
-        ai += x
-        bi += y
-    if ai != len(a) or bi != len(b):
-        print("[align] Bertalign did not cover all ALTO lines; using lexical DP only")
-        return None
-    return spans
-
-
-def _segment_line_count(segment, units: list[dict], start: int) -> int | None:
-    """Map a Bertalign text segment back to the exact consecutive ALTO lines."""
-    if isinstance(segment, (list, tuple)):
-        target = normalize(" ".join(map(str, segment)))
-    else:
-        target = normalize(str(segment))
-    if not target:
-        return 0
-    # Bertalign returns text segments rather than ALTO indices. Consume source
-    # lines in order until their normalized tokens exactly reproduce a segment.
-    collected: list[str] = []
-    for count, unit in enumerate(units[start:], start=1):
-        collected.extend(normalize(unit["text"]))
-        if collected == target:
-            return count
-        if len(collected) >= len(target) and collected[:len(target)] != target:
-            return None
-    return None
-
-
 def _align_dp(a: list[dict], b: list[dict], a_offset: int = 0, b_offset: int = 0) -> list[dict]:
     """Lexical dynamic programming supporting 1:n, n:1, n:m groups and gaps."""
     # Each DP cell represents a prefix of witness A and witness B. A transition
@@ -928,8 +843,8 @@ def _alignment_groups_as_rows(groups: list[dict], a: list[dict], b: list[dict]) 
     return rows
 
 
-def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False, progress=None):
-    """Lexical first; automatically try semantic recovery on weak passages."""
+def align_witness_inputs(a: list[dict], b: list[dict], progress=None):
+    """Align the word streams and compute displaced-passage suggestions."""
     if progress:
         progress(1)
     try:
@@ -940,22 +855,14 @@ def align_witness_inputs(a: list[dict], b: list[dict], include_diagnostics=False
     if alignments:
         alignment_method = "word-level Levenshtein with global displaced-run recovery"
     else:
-        # This backup is lexical. The same automatic quality gate below handles
-        # Bertalign; do not load it twice via the old all-or-nothing path.
         groups = _align_dp(a, b)
         alignments = _alignment_groups_as_rows(groups, a, b)
         alignment_method = "weighted Levenshtein backup"
     if progress:
         progress(2)
-    alignments, diagnostics = automatic_semantic.recover(alignments, align_alto_words, similarity)
-    if diagnostics['accepted']:
-        alignment_method = "hybrid: automatic Bertalign recovery + word-level Levenshtein"
-    if progress:
-        progress(3)
     line_groups = _align_dp(a, b)
     transpositions = find_displaced_passages(a, b, line_groups, similarity)
-    result = (alignments, alignment_method, transpositions)
-    return (*result, diagnostics) if include_diagnostics else result
+    return alignments, alignment_method, transpositions
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -1052,12 +959,11 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("Each witness must contain at least one textual unit.")
             # Both uploaded ALTO and frontend-prepared sentence payloads use
             # the same continuous word-stream alignment.
-            alignments, alignment_method, transpositions, diagnostics = align_witness_inputs(a, b, include_diagnostics=True, progress=progress if streaming else None)
+            alignments, alignment_method, transpositions = align_witness_inputs(a, b, progress=progress if streaming else None)
             result = {
                 "witnesses": {"A": a, "B": b},
                 "alignments": alignments,
                 "alignment_method": alignment_method,
-                "semantic_fallback": diagnostics,
                 "possible_transpositions": transpositions,
                 "frequent_ambiguous_cases": summarize_ambiguities(transpositions),
                 "taxonomy_available": any(ref.get("line_tags") or ref.get("block_tags")

@@ -160,16 +160,15 @@ class AutomaticSemanticTests(unittest.TestCase):
             self.assertIs(actual, rows)
             self.assertEqual(diagnostic['windows'][0]['status'], status)
 
-    def test_alignment_entrypoint_runs_automatic_recovery_and_exposes_diagnostics(self):
+    def test_alignment_entrypoint_keeps_lexical_rows_without_calling_semantic_recovery(self):
         rows = gap_passage()
         a = [i for r in rows for i in r['aItems']]
         b = [i for r in rows for i in r['bItems']]
         with patch.object(app, 'align_alto_words', return_value=rows), patch.object(automatic.semantic_alignment, 'propose', return_value=proposal(improved(rows))) as call:
-            actual, method, _, diagnostic = app.align_witness_inputs(a, b, include_diagnostics=True)
-        call.assert_called_once()
-        self.assertEqual(diagnostic['status'], 'applied')
-        self.assertTrue(method.startswith('hybrid: automatic'))
-        self.assertEqual(len(actual), 3)
+            actual, method, _ = app.align_witness_inputs(a, b)
+        call.assert_not_called()
+        self.assertTrue(method.startswith('word-level'))
+        self.assertEqual(actual, rows)
 
     def test_malformed_engine_responses_are_rejected_without_breaking_alignment(self):
         for response in [None, [], {}, {'status': None}]:

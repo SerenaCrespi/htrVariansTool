@@ -12,41 +12,19 @@ browser. An optional IIIF image URL accesses the remote image provider.
 
 ## Start the application
 
-Run commands from the repository directory. Python **3.12 or newer** is
-recommended and is required by the launcher’s Bertalign setup.
-
-### Standard workflow without installing optional models
-
-The main ALTO alignment workflow uses the Python standard library:
+Run commands from the repository directory with Python 3.10 or later:
 
 ```bash
 python3 backend/app.py
 ```
 
-This works on Linux and macOS with a suitable Python installation. The backend
-opens the browser and prints its local address, normally
-`http://127.0.0.1:5010`. If that port is occupied, use the alternative address
-printed in the terminal. Keep the terminal open; stop the app with **Ctrl+C**.
+On Linux you can also run `sh LANCER_LINUX.sh`. The launcher uses an existing
+`.venv` when available, or the system Python. The app uses the Python standard
+library.
 
-Do not open `index.html` directly: the interface needs the backend for alignment
-and static files.
-
-### Linux launcher with Bertalign dependencies
-
-On Ubuntu versions providing Python 3.12:
-
-```bash
-sudo apt install python3.12 python3.12-venv
-sh LANCER_LINUX.sh
-```
-
-The launcher creates `.venv/` and installs Bertalign and CPU PyTorch on the first
-run. These downloads can be large. Bertalign is optional for the main ALTO
-workflow, but the current launcher installs it automatically. To avoid these
-downloads, use the direct Python command above.
-
-There is currently no macOS-specific launcher in this checkout; use the direct
-Python command on macOS.
+The backend opens the browser and prints its local address, normally
+`http://127.0.0.1:5010`. Stop the app with **Ctrl+C**. Open the address printed
+by the backend to use the app.
 
 ### Update an existing checkout
 
@@ -86,74 +64,11 @@ changing either reading keeps all decisions and source groupings intact.
 Recalculating the complete alignment can clear review decisions, so save the
 project before doing that.
 
-## Automatic Bertalign fallback
+## Lexical alignment
 
-On the `feature/project-save-open` branch, Bertalign is an **automatic backend
-fallback** during ALTO import and complete realignment. There is no semantic
-button or proposal-application dialog. Ordinary spelling variants and reliable
-matches continue through the lexical workflow without loading a model.
-
-1. The backend first aligns the continuous word streams lexically.
-2. It detects consecutive weak matches or contrasted additions/omissions and
-   includes nearby context. A long uncertain unit can also trigger recovery.
-3. It attempts Bertalign on eligible passages and refines the semantic passage
-   correspondences with word-level lexical alignment.
-4. It accepts a replacement only if all source text/references are retained,
-   reliable contextual correspondences stay intact, and measured lexical
-   alignment quality improves. Otherwise the lexical result is kept.
-5. The interface reports whether fallback was unnecessary, unavailable,
-   attempted without an accepted improvement, or applied. Recovered units are
-   marked **automatic Bertalign recovery: review this unit** and appear under
-   **Uncertain alignments**. No editorial keep/ignore decisions are automatic.
-
-This runs before review begins, not every time **Edit text** is saved and not
-when reopening a saved project. The existing preservation of decisions during
-local text edits is unchanged. A complete realignment still asks before clearing
-review decisions.
-
-### Runtime and first use
-
-Bertalign 2.0.1 requires Python 3.12+ and the dependencies in `requirements.txt`.
-The Linux launcher installs them into `.venv`. If installing manually, use the
-same Python environment that starts the server. The first eligible passage
-loads the public **LaBSE** model and may download its weights from Hugging Face.
-Sufficient memory and network access to the model host are required. The loaded
-encoder is reused for subsequent passages.
-
-A missing package, incompatible dependency, failed model load or rejected output
-never replaces the lexical result. The reason is shown in the interface. Model
-loading is not attempted on comparisons that have no eligible uncertain passage.
-
-### Recovery policy and limits
-
-The current policy is deliberately explicit and experimental:
-
-- A weak row has recomputed lexical similarity below **0.45** or text on only
-  one side. A core needs text from both witnesses and at least two weak rows,
-  or one weak row with at least 12 words on each side. Isolated short variants
-  and pure one-sided additions do not trigger the model.
-- One neighboring row on each side provides context. Each side of the complete
-  window needs at least 8 words. Overlapping windows are combined.
-- Up to **3 windows per comparison** are attempted, with **40 review units** per
-  window and the semantic adapter’s fragment/character limits. Oversized windows
-  and exhausted budgets are recorded instead of silently truncated.
-- Existing correspondences scoring at least **0.65** must remain intact. Quality
-  is the sum of paired-word counts weighted by lexical similarity, divided by
-  the larger witness word count. It must improve by at least **0.04**. Reported
-  proposal scores alone cannot bypass this check.
-- A runtime failure stops further attempts in that comparison. Remaining windows
-  are recorded as unattempted; they retain their lexical alignment.
-
-Project files retain the fallback diagnostics and provenance of recovered rows.
-Decisions JSON exports include `semanticFallback`, `alignmentSource` and
-`requiresReview`. Diagnostic window numbers refer to the initial lexical rows,
-before any replacement changes the row count.
-
-These heuristics require calibration on researcher-reviewed manuscripts. A
-semantic correspondence that does not improve the lexical score is currently
-rejected. Unit tests use a controlled aligner/encoder: they verify activation,
-validation and safe fallback, **not LaBSE’s scholarly accuracy**. Actual model
-inference must be evaluated separately on real passages.
+New comparisons use the lexical engine. Bertalign is temporarily disabled.
+Existing project files retain previously saved readings, decisions and
+provenance when reopened.
 
 ## Save, reopen and export
 
@@ -285,10 +200,7 @@ internal comparison keys; those differ from public result-export identifiers.
 - Shared word sequences provide anchors; weighted word-level Levenshtein aligns
   intervening spans.
 - Results retain their ALTO source references for review and export.
-- Bertalign is not required for the main ALTO alignment. It can be attempted by
-  the backup/legacy alignment path; the normal API now uses it for
-  automatic recovery of uncertain passages on the feature branch.
-  Displaced-passage suggestions are separate review aids.
+- Displaced-passage suggestions are separate review aids.
 
 All alignments are proposals for scholarly review, not automatic editorial
 judgments. See [the backend documentation](backend/README.md) for more detail.
@@ -313,10 +225,8 @@ node --test tests/test_export_support.cjs
 
 Coverage includes name-based witness IDs, collisions, complete text preservation,
 mixed genres, ALTO line reconstruction, continued words, apparatus placement,
-and invalid intervals or ambiguous boundaries. Backend tests cover automatic
-activation on uncertain passages, quality gates, reliable-context protection,
-text/reference conservation, budgets, unavailable models and encoder reuse with
-a controlled Bertalign substitute.
+and invalid intervals or ambiguous boundaries. Backend tests verify that the live endpoint uses lexical alignment. The archived
+semantic modules still have isolated tests with a controlled Bertalign substitute.
 
 ### Browser regression tests
 
@@ -360,7 +270,7 @@ provides a script to produce a real before/after HTML report on your machine.
 | `export-support.js` | Witness IDs, TEI structures, ALTO line reconstruction and apparatus rendering |
 | `index.html` | Application interface and styles |
 | `LANCER_LINUX.sh`, `start.sh` | Linux launcher and dependency setup |
-| `requirements.txt` | Optional Bertalign dependency |
+| `requirements.txt` | Archived dependencies for semantic experiments |
 | `tests/test_alignment_features.py` | Backend regression tests |
 | `tests/test_automatic_semantic.py` | Automatic recovery policy and integration unit tests |
 | `tests/test_semantic_alignment.py` | Semantic proposal control-flow and source-mapping unit tests |

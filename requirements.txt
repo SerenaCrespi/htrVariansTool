@@ -1,1 +1,2 @@
+# Archived dependency for semantic experiments. The app launcher does not install it.
 bertalign==2.0.1

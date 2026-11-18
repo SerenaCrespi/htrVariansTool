@@ -296,7 +296,7 @@ test('unchanged, cancelled and invalid text edits preserve decisions and origina
  await page.close();
 });
 
-test('automatic fallback is surfaced without any semantic action and survives save/reopen',async()=>{
+test('legacy semantic provenance survives save/reopen and remains reviewable',async()=>{
  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
  assert.equal(await page.locator('#semanticBtn').count(),0);assert.equal(await page.locator('#semanticDialog').count(),0);
  let requests=0;
@@ -311,30 +311,26 @@ test('automatic fallback is surfaced without any semantic action and survives sa
  });
  await upload(page,'#fileA',['prima riga del testimone','seconda riga del testimone','terza riga del testimone']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['prima riga del testimone','seconda riga del testimone','terza riga del testimone']);
  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
- assert.equal(requests,1);assert.match(await page.locator('#automaticSemanticStatus').textContent(),/1 of 1/);
- assert.match(await page.locator('#unit-1').textContent(),/automatic Bertalign recovery/);
+ assert.equal(requests,1);assert.equal(await page.locator('#automaticSemanticStatus').count(),0);
+ assert.match(await page.locator('#unit-1').textContent(),/alignment needs review/);
  await page.locator('#resultFilter').selectOption('uncertain');assert.equal(await page.locator('#results article').count(),1);
  const json=JSON.parse(await download(page,'#exportJson')),comparison=Object.values(json.comparisons)[0];
  assert.equal(comparison.semanticFallback.status,'applied');assert.equal(comparison.alignments[1].alignmentSource,'bertalign_automatic');assert.equal(comparison.alignments[1].requiresReview,true);
  const expected=await page.evaluate(()=>captureProject()),saved=await download(page,'#saveProject');await reloadWithoutSession(page);await open(page,saved);
- assert.deepEqual(await page.evaluate(()=>captureProject()),expected);assert.match(await page.locator('#automaticSemanticStatus').textContent(),/1 of 1/);assert.deepEqual(errors,[]);await page.close();
+ assert.deepEqual(await page.evaluate(()=>captureProject()),expected);assert.equal(await page.locator('#automaticSemanticStatus').count(),0);assert.deepEqual(errors,[]);await page.close();
 });
 
-test('automatic fallback failure keeps lexical output and displays the reason',async()=>{
- const page=await browser.newPage();await page.goto(url);
- const good=await page.request.post(url+'/api/align',{data:{sentences:{A:[{text:'identical reliable reference text',refs:[]}],B:[{text:'identical reliable reference text',refs:[]}]}}});
- assert.equal(good.status(),200);assert.equal((await good.json()).semantic_fallback.status,'not_needed');
- await page.route('**/api/align',async route=>{
-  const response=await route.fetch({headers:{...route.request().headers(),accept:'application/json'}}),data=await response.json();
-  data.semantic_fallback={strategy:'automatic',engine:'bertalign',status:'not_installed',candidates:1,attempted:1,accepted:0,windows:[{fromUnit:1,toUnit:2,status:'not_installed'}]};
-  await route.fulfill({json:data});
- });
- await upload(page,'#fileA',['prima riga del testimone','seconda riga del testimone']);await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['prima riga del testimone','seconda riga del testimone']);
- await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
- assert.match(await page.locator('#automaticSemanticStatus').textContent(),/not installed/);
- assert.equal(await page.evaluate(()=>groups.some(g=>g.semantic_review)),false);assert.equal(await page.locator('#results article').count(),2);
- await page.locator('#language').selectOption('it');assert.match(await page.locator('#automaticSemanticStatus').textContent(),/non è installato/);
- await page.close();
+test('the alignment endpoint returns lexical results without semantic diagnostics',async()=>{
+ const page=await browser.newPage();
+ try{
+  const response=await page.request.post(url+'/api/align',{data:{sentences:{A:[{text:'una lezione del manoscritto',refs:[]}],B:[{text:'una versione del testimone',refs:[]}]}}});
+  assert.equal(response.status(),200);
+  const data=await response.json();
+  assert.match(data.alignment_method,/word-level/);
+  assert.equal(data.semantic_fallback,undefined);
+  assert.ok(data.alignments.length);
+  assert.equal(data.alignments.some(row=>row.semantic_review),false);
+ }finally{await page.close()}
 });
 
 test('adding a witness aligns only the new pair and preserves previous edits and review decisions',async()=>{
@@ -415,7 +411,7 @@ test('alignment feedback and TEI titles work through the export menu',{timeout:2
    const progress=page.getByRole('progressbar',{name:'Aligning witnesses…'});
    await progress.waitFor();
    assert.equal(await progress.getAttribute('aria-valuenow'),'0');
-   assert.match(await page.locator('#alignmentRemaining').innerText(),/4 remaining/);
+   assert.match(await page.locator('#alignmentRemaining').innerText(),/3 remaining/);
    assert.equal(await page.locator('#alignmentToast').isVisible(),false);
   }finally{release()}
   await page.locator('#alignmentToast').waitFor();
@@ -527,7 +523,7 @@ test('alignment streams actual stages and preserves the JSON endpoint',async()=>
   const headers={accept:'application/x-ndjson'};
   const streamed=await page.request.post(url+'/api/align',{headers,data});
   const events=(await streamed.text()).trim().split('\n').map(line=>JSON.parse(line));
-  assert.deepEqual(events.slice(0,-1),[{completed:1},{completed:2},{completed:3}]);
+  assert.deepEqual(events.slice(0,-1),[{completed:1},{completed:2}]);
   const json=await page.request.post(url+'/api/align',{data});
   assert.deepEqual(events.at(-1).result,await json.json());
  }finally{await page.close()}
