@@ -475,9 +475,20 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
   });
   assert.deepEqual(scroll,{moved:true,fixed:true});
   await page.setViewportSize({width:1280,height:900});
-  await first.locator('.multi-reading').nth(2).getByRole('button',{name:'Keep',exact:true}).first().click();
-  assert.equal(await page.evaluate(()=>currentReview('C').decisions[0][0]),'keep');
-  assert.deepEqual(await page.evaluate(()=>currentReview('B').decisions),{});
+  await page.evaluate(()=>activatePair('B'));
+  for(const [witness,action] of [['C','Keep'],['B','Ignore']]){
+   const card=first.locator(`.witness-card[data-witness="${witness}"]`);
+   const button=card.getByRole('button',{name:action,exact:true}).first();
+   const facsimile=card.locator('img.line-crop');
+   await facsimile.waitFor();
+   await button.scrollIntoViewIfNeeded();
+   const top=await first.evaluate(row=>row.getBoundingClientRect().top);
+   await facsimile.evaluate(node=>{window.reviewFacsimile=node});
+   await button.click();
+   assert.ok(Math.abs(await first.evaluate(row=>row.getBoundingClientRect().top)-top)<=1);
+   assert.equal(await facsimile.evaluate(node=>node===window.reviewFacsimile),true);
+   assert.equal(await page.evaluate(id=>currentReview(id).decisions[0][0],witness),action.toLowerCase());
+  }
 
   await page.getByRole('button',{name:'Line by line',exact:true}).click();
   assert.equal(await page.locator('.multi-row').count(),1);
@@ -517,6 +528,7 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
   await page.locator('[data-witness-facsimiles="A"]').scrollIntoViewIfNeeded();
   await page.locator('.witness-facsimiles img.line-crop').first().waitFor();
   await page.locator('#editB').fill('Prima riga corretta');
+  page.once('dialog',dialog=>dialog.accept());
   await page.locator('#saveEditBtn').click();
   assert.match(await page.locator('.multi-reading').nth(1).innerText(),/corretta/);
   await page.getByRole('button',{name:'Next line',exact:true}).click();

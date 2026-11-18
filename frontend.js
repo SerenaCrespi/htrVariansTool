@@ -354,7 +354,7 @@ function removeWitness(id){
  render();renderMovements();saveBrowserSession(true);
 }
 function renderComparisonControl(){const control=$('comparisonControl'),select=$('compareWitness');if(!control||!select)return;const ids=Object.keys(pairResults);control.hidden=!ids.length||witnessView!=='pair';if(!ids.length)return;select.innerHTML=ids.map(id=>`<option value="${id}">${esc(names[id])}</option>`).join('');select.value=pairResults[activeWitness]?activeWitness:ids[0];select.onchange=()=>activatePair(select.value)}
-function activatePair(id,saveCurrent=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid:')||p.alignment_method.includes('bertalign +')||p.alignment_method.includes('global displaced-run recovery')?'alignSaved':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){render();renderMovements();$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
+function activatePair(id,saveCurrent=true,redraw=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid:')||p.alignment_method.includes('bertalign +')||p.alignment_method.includes('global displaced-run recovery')?'alignSaved':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){if(redraw){render();renderMovements();}$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
 function render(facsimiles){
  witnessImageObserver?.disconnect();
  saveBrowserSession();
@@ -482,13 +482,17 @@ function witnessReading(entry,showReference,label,showReading=true){
  <div class="controls">${action('edit','editText','btn-blue')} ${action('adjust','adjustAlignment','btn-outline')}</div></section>`;
 }
 function reviewWitnessAction(id,index,action,variant){
+ if(action==='keep'||action==='ignore'){
+  if(id!==activeWitness)activatePair(id,true,false);
+  setVariant(index,variant,action);
+  return;
+ }
  if(id!==activeWitness)activatePair(id);
  if(action==='pair'){
   setWitnessView('pair');
   goToUnit(index);
  }else if(action==='edit')editUnit(index,witnessView==='focus');
  else if(action==='adjust')adjustUnit(index);
- else setVariant(index,variant,action);
 }
 let witnessImageObserver;
 function witnessSourceLines(items,source){
