@@ -105,3 +105,15 @@ test('multiline prose corrections outside a poetry interval do not affect ALTO v
  const reference=[reviewUnit([{text:'prosa corretta liberamente',refs:source.slice(0,2).flatMap(i=>i.refs)}]),reviewUnit([source[2]])];
  assert.equal(renderALTOPoetry(reference,source,[],['B'],idMap,1,2),'<l>verso finale</l>');
 });
+
+test('a title line inside a grouped unit starts a new division and keeps its variant',()=>{
+ const {renderTitleRange,sourceLineKey}=require('../export-support.js');
+ const source=[sourceItem('prologo','l1'),sourceItem('Titolo breve','l2'),sourceItem('prima riga','l3')];
+ const reference=[reviewUnit(source)];
+ const titles=new Set([sourceLineKey(source[1].refs[0])]);
+ const edits=[{id:'B',a0:2,a1:3,tokens:['lungo']}];
+ const xml=renderGenreRanges(reference,[{start:1,end:1,genre:'prose'}],
+  (a,b)=>renderApparatus(reference,edits,['B'],idMap,a,b),null,
+  (a,b)=>renderTitleRange(reference,source,edits,['B'],idMap,a,b,titles));
+ assert.match(xml,/<div><p>prologo<\/p><\/div>\n<div><head>Titolo <app[^>]*>[\s\S]*lungo<\/rdg><\/app><\/head>\n<p>prima riga<\/p><\/div>/);
+});

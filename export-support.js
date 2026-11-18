@@ -29,14 +29,31 @@
   if(next!==total+1)throw Error('rangeCoverage');
   return ranges;
  }
- function renderGenreRanges(referenceUnits,ranges,renderContent,renderPoetry=null){
+ function renderGenreRanges(referenceUnits,ranges,renderContent,renderPoetry=null,renderTitles=null){
   validateGenreRanges(ranges,referenceUnits.length);
-  return ranges.map(({start,end,genre})=>{
-   if(genre==='poetry'&&renderPoetry)return `<lg type="poem">${renderPoetry(start-1,end)}</lg>`;
-   if(genre==='poetry')return `<lg type="poem">${Array.from({length:end-start+1},(_,i)=>`<l>${renderContent(start+i-1,start+i)}</l>`).join('\n')}</lg>`;
-   const content=`<p>${renderContent(start-1,end)}</p>`;
-   return genre==='drama'?`<sp>${content}</sp>`:content;
-  }).join('\n');
+  const wrap=(genre,content)=>{
+   if(genre==='poetry')return `<lg type="poem">${content}</lg>`;
+   const paragraph=`<p>${content}</p>`;
+   return genre==='drama'?`<sp>${paragraph}</sp>`:paragraph;
+  };
+  const parts=ranges.flatMap(({start,end,genre})=>{
+   const titled=renderTitles?.(start-1,end);
+   if(titled)return titled.map(part=>part.head?part:{content:wrap(genre,part.render(genre))});
+   const content=genre==='poetry'
+    ? (renderPoetry?renderPoetry(start-1,end):Array.from({length:end-start+1},(_,i)=>`<l>${renderContent(start+i-1,start+i)}</l>`).join('\n'))
+    : renderContent(start-1,end);
+   return [{content:wrap(genre,content)}];
+  });
+  if(!parts.some(part=>part.head))return parts.map(part=>part.content).join('\n');
+  const sections=[];
+  let section=[],hasContent=false;
+  for(const part of parts){
+   if(part.head&&hasContent){sections.push(section);section=[];hasContent=false}
+   section.push(part.content);
+   if(!part.head)hasContent=true;
+  }
+  sections.push(section);
+  return sections.map(items=>`<div>${items.join('\n')}</div>`).join('\n');
  }
  function unitWordOffsets(referenceUnits){
   const offsets=[0];for(const unit of referenceUnits)offsets.push(offsets.at(-1)+words(unit.text).length);return offsets;
@@ -127,12 +144,12 @@
   }
   return {units:segments,wordMap,sourceOwners,reviewOffsets:unitWordOffsets(referenceUnits)};
  }
- function renderALTOPoetry(referenceUnits,sourceUnits,edits,ids,idMap,startUnit,endUnit){
+ function projectALTOApparatus(referenceUnits,sourceUnits,edits,startUnit,endUnit,boundaryError='poetryLineBoundary'){
   const layout=altoPoetryLayout(referenceUnits,sourceUnits,startUnit,endUnit),selected=[];
   layout.units.forEach((line,i)=>{
    const owners=[...line.reviewUnits];
    if(owners.some(owner=>owner>=startUnit&&owner<endUnit)){
-    if([...(layout.sourceOwners.get(line.sourceKey)||line.reviewUnits)].some(owner=>owner<startUnit||owner>=endUnit))throw Error('poetryLineBoundary');
+    if([...(layout.sourceOwners.get(line.sourceKey)||line.reviewUnits)].some(owner=>owner<startUnit||owner>=endUnit))throw Error(boundaryError);
     selected.push(i);
    }
   });
@@ -155,8 +172,37 @@
    if(sorted.some((p,i)=>i&&p!==sorted[i-1]+1))throw Error('poetrySourceMapping');
    return[{...e,a0:sorted[0],a1:sorted.at(-1)+1}];
   });
-  return selected.map(i=>`<l>${renderApparatus(layout.units,projected,ids,idMap,i,i+1)}</l>`).join('\n');
+  return {lines:layout.units,selected,projected};
+ }
+ function renderALTOPoetry(referenceUnits,sourceUnits,edits,ids,idMap,startUnit,endUnit){
+  const {lines,selected,projected}=projectALTOApparatus(referenceUnits,sourceUnits,edits,startUnit,endUnit);
+  return selected.map(i=>`<l>${renderApparatus(lines,projected,ids,idMap,i,i+1)}</l>`).join('\n');
+ }
+ function renderTitleRange(referenceUnits,sourceUnits,edits,ids,idMap,startUnit,endUnit,titles){
+  const affected=referenceUnits.slice(startUnit,endUnit).some(unit=>
+   (unit.refs||[]).some(ref=>titles.has(sourceLineKey(ref))));
+  if(!affected)return null;
+  const {lines,selected,projected}=projectALTOApparatus(referenceUnits,sourceUnits,edits,startUnit,endUnit,'titleLineBoundary');
+  const render=(start,end)=>renderApparatus(lines,projected,ids,idMap,start,end);
+  const parts=[];
+  let textLines=[];
+  const flush=()=>{
+   if(!textLines.length)return;
+   const block=textLines;
+   parts.push({render:genre=>genre==='poetry'
+    ? block.map(i=>`<l>${render(i,i+1)}</l>`).join('\n')
+    : render(block[0],block.at(-1)+1)});
+   textLines=[];
+  };
+  for(const i of selected){
+   if(titles.has(lines[i].sourceKey)){
+    flush();
+    parts.push({head:true,content:`<head>${render(i,i+1)}</head>`});
+   }else textLines.push(i);
+  }
+  flush();
+  return parts;
  }
 
- return {altoPoetryLayout,renderALTOPoetry,witnessIdentifiers,validateGenreRanges,renderGenreRanges,unitWordOffsets,renderApparatus};
+ return {sourceLineKey,altoPoetryLayout,renderALTOPoetry,renderTitleRange,witnessIdentifiers,validateGenreRanges,renderGenreRanges,unitWordOffsets,renderApparatus};
 });
