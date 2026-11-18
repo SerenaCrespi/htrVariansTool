@@ -103,7 +103,7 @@ let titleLines=new Set(),alignmentsInProgress=0;
 let language='en',viewFilter='all',genreRanges=[],uniformGenre='prose',teiExportDraft=null;
 function t(key,vars={}){let value=(messages[language]||messages.en)[key]||messages.en[key]||key;return value.replace(/\{(\w+)\}/g,(_,name)=>vars[name]??'')}
 function setImageStatus(which,status){imageStatus[which]=status;const el=$(`imageCount${which}`);if(!status){el.textContent=t('none');el.removeAttribute('title');return}const good=status.good||[],bad=status.bad||[],short=good.length>3?`${good.slice(0,3).join(', ')} +${good.length-3}`:good.join(', ');el.textContent=bad.length?t('imagePartial',{n:good.length,files:bad.join(', ')}):good.length?t('imageVerified',{n:good.length,files:short}):t('imageInvalid');el.title=[...good.map(x=>`✓ ${x}`),...bad.map(x=>`✗ ${x}`)].join('\n')}
-function setLanguage(code){language=messages[code]?code:'en';document.documentElement.lang=language;document.title=language==='fr'?'PRIMA · Espace de collation':language==='it'?'PRIMA · Spazio di collazione':'PRIMA · Collation workspace';document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('iiifA').placeholder=t('optionalFallback');if(A.length&&B.length){$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[activeWitness]||''})+(alignmentMethod?` · ${t(alignmentMethod)}`:'');$('alignSummary').textContent=t('alignmentSummary',{n:groups.length})}else $('loadedStatus').textContent=t('noCorpus');witnessIds.forEach(id=>{if($(`imageCount${id}`))setImageStatus(id,imageStatus[id]||null)});renderWitnessInputs();renderComparisonControl();renderAutomaticSemanticStatus();renderAlignmentProgress();renderGenreEditor();if(groups.length){render();renderMovements()}}
+function setLanguage(code){language=messages[code]?code:'en';document.documentElement.lang=language;document.title=language==='fr'?'PRIMA · Espace de collation':language==='it'?'PRIMA · Spazio di collazione':'PRIMA · Collation workspace';document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('iiifA').placeholder=t('optionalFallback');if(A.length&&B.length){$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[activeWitness]||''})+(alignmentMethod?` · ${t(alignmentMethod)}`:'');$('alignSummary').textContent=t('alignmentSummary',{n:groups.length})}else $('loadedStatus').textContent=t('noCorpus');witnessIds.forEach(id=>{if($(`imageCount${id}`))setImageStatus(id,imageStatus[id]||null)});renderWitnessInputs();renderComparisonControl();renderAutomaticSemanticStatus();renderAlignmentProgress();renderGenreEditor();saveBrowserSession();if(groups.length){render();renderMovements()}}
 function decodeImage(url){return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>img.naturalWidth&&img.naturalHeight?resolve():reject(Error('empty image'));img.onerror=()=>reject(Error('unreadable image'));img.src=url})}
 async function loadFile(which,fileList){
  if(!fileList||!fileList.length)return;
@@ -126,7 +126,7 @@ async function loadFile(which,fileList){
   }
  }catch(e){rollback();alert(e.message)}
 }
-async function loadImages(which,fileList){if(!fileList)return;const selected=[...fileList];if(!selected.length){images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=[];imageOverrides={};setImageStatus(which,null);if(witnessView==='focus'&&groups.length)render();return}const status=$(`imageCount${which}`);status.textContent=t('imageLoading');const checked=await Promise.all(selected.map(async file=>{const url=URL.createObjectURL(file);try{await decodeImage(url);return{ok:true,item:{file,url,name:file.name}}}catch(e){URL.revokeObjectURL(url);return{ok:false,name:file.name}}}));const good=checked.filter(x=>x.ok).map(x=>x.item),bad=checked.filter(x=>!x.ok).map(x=>x.name);images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=good;for(const key of Object.keys(imageOverrides))if(key.startsWith(which+':'))delete imageOverrides[key];for(const [key,name] of Object.entries(projectImageLinks)){if(key.startsWith(which+':')){const item=good.find(x=>x.name===name);if(item)imageOverrides[key]=item}}setImageStatus(which,{good:good.map(x=>x.name),bad});if(witnessView==='focus'&&groups.length)render()}
+async function loadImages(which,fileList){if(!fileList)return;const selected=[...fileList];if(!selected.length){images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=[];delete projectImageFiles[which];for(const key of Object.keys(projectImageLinks))if(key.startsWith(which+':')){delete projectImageLinks[key];delete imageOverrides[key]}setImageStatus(which,null);if(witnessView==='focus'&&groups.length)render();return}const status=$(`imageCount${which}`);status.textContent=t('imageLoading');const checked=await Promise.all(selected.map(async file=>{const url=URL.createObjectURL(file);try{await decodeImage(url);return{ok:true,item:{file,url,name:file.name}}}catch(e){URL.revokeObjectURL(url);return{ok:false,name:file.name}}}));const good=checked.filter(x=>x.ok).map(x=>x.item),bad=checked.filter(x=>!x.ok).map(x=>x.name);images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=good;for(const key of Object.keys(imageOverrides))if(key.startsWith(which+':'))delete imageOverrides[key];for(const [key,name] of Object.entries(projectImageLinks)){if(key.startsWith(which+':')){const item=good.find(x=>x.name===name);if(item)imageOverrides[key]=item}}setImageStatus(which,{good:good.map(x=>x.name),bad});if(witnessView==='focus'&&groups.length)render()}
 function groupItems(arr,g,side){const key=side==='A'?'aItems':'bItems';return Array.isArray(g[key])?g[key]:arr.slice(g[side==='A'?'a0':'b0'],g[side==='A'?'a1':'b1'])}
 function groupText(arr,g,side){return groupItems(arr,g,side).map(x=>x.text).filter(Boolean).join(' ')}
 // Identify a comparison unit by its readings and source lines so review choices
@@ -270,9 +270,9 @@ async function runAlign(useEdited=false,onlyWitnesses=null){
 function refs(arr){if(!arr.length)return '—';return arr.flatMap(x=>x.refs||[]).map(r=>`${r.alto_file||''} · ${r.page} · ${r.line}`).join(' / ')}
 function renderText(tokens,unit,review=decisions){return tokens.map(token=>{if(token.c==='same')return `<span>${esc(token.t)}</span>`;let status=review[unit]?.[token.v]||'';let cls=status==='keep'?'keep':status==='ignore'?'ignore':'var';return `<span class="token ${cls}" title="${t('difference',{n:token.v+1})}">${esc(token.t)}</span>`}).join(' ')}
 
-function renderWitnessInputs(){const savedIIIF=Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||'']));const container=$('additionalWitnesses'),imageRows=$('additionalImageRows'),iiifRows=$('additionalIIIFRows');if(!container)return;container.innerHTML='';if(imageRows)imageRows.innerHTML='';if(iiifRows)iiifRows.innerHTML='';witnessIds.slice(1).forEach((id,index)=>{const number=index+1,label=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+number,imageLabel=(language==='fr'?'Images ':language==='it'?'Immagini ':'Images ')+number,iiifLabel=(language==='fr'?'URI IIIF ':language==='it'?'URI IIIF ':'IIIF URI ')+number;container.insertAdjacentHTML('beforeend',`<div class="witness-import-row"><div class="file-row"><label for="file${id}">${label}</label><input id="file${id}" type="file" multiple accept=".xml,.alto,text/xml" aria-label="${label} ALTO files"></div><div class="file-row"><label class="witness-name-label" for="dossierName${id}">${t('witnessName')}</label><input id="dossierName${id}" class="form-control" type="text" placeholder="e.g. BNCF II.IV.232" value="${esc(names[id]||'')}"></div></div>`);if(imageRows)imageRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="images${id}">${imageLabel}</label><input id="images${id}" type="file" multiple accept="image/*" aria-label="${imageLabel}"><span class="status-note" id="imageCount${id}">${t('none')}</span></div>`);if(iiifRows)iiifRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="iiif${id}">${iiifLabel}</label><input class="form-control" id="iiif${id}" type="url" placeholder="${t('optionalFallback')}"></div>`);if($(`iiif${id}`))$(`iiif${id}`).value=savedIIIF[id]||'';const fileInput=$(`file${id}`),nameInput=$(`dossierName${id}`),imageInput=$(`images${id}`);if(fileInput)fileInput.onchange=e=>loadFile(id,e.target.files);if(nameInput)nameInput.onchange=e=>{e.target.dataset.userEdited='true';names[id]=e.target.value.trim()||names[id];if(groups.length){render();renderMovements()}};if(imageInput)imageInput.onchange=e=>loadImages(id,e.target.files);images[id]=images[id]||[];imageStatus[id]=imageStatus[id]||null;if(imageStatus[id])setImageStatus(id,imageStatus[id])});const lab=$('dossierNameA');if(lab&&rawByWitness.A?.length)lab.value=names.A||'';const add=$('addWitnessBtn');if(add){add.disabled=witnessIds.length>=10;add.title=add.disabled?t('witnessLimit'):''}const count=$('witnessLimit');if(count)count.textContent=add?.disabled?t('witnessLimit'):t('witnessCount',{n:witnessIds.length});}
+function renderWitnessInputs(){const savedIIIF=Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||'']));const container=$('additionalWitnesses'),imageRows=$('additionalImageRows'),iiifRows=$('additionalIIIFRows');if(!container)return;container.innerHTML='';if(imageRows)imageRows.innerHTML='';if(iiifRows)iiifRows.innerHTML='';witnessIds.slice(1).forEach((id,index)=>{const number=index+1,label=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+number,imageLabel=(language==='fr'?'Images ':language==='it'?'Immagini ':'Images ')+number,iiifLabel=(language==='fr'?'URI IIIF ':language==='it'?'URI IIIF ':'IIIF URI ')+number;container.insertAdjacentHTML('beforeend',`<div class="witness-import-row"><div class="file-row"><label for="file${id}">${label}</label><input id="file${id}" type="file" multiple accept=".xml,.alto,text/xml" aria-label="${label} ALTO files"></div><div class="file-row"><label class="witness-name-label" for="dossierName${id}">${t('witnessName')}</label><input id="dossierName${id}" class="form-control" type="text" placeholder="e.g. BNCF II.IV.232" value="${esc(names[id]||'')}"></div></div>`);if(imageRows)imageRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="images${id}">${imageLabel}</label><input id="images${id}" type="file" multiple accept="image/*" aria-label="${imageLabel}"><span class="status-note" id="imageCount${id}">${t('none')}</span></div>`);if(iiifRows)iiifRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="iiif${id}">${iiifLabel}</label><input class="form-control" id="iiif${id}" type="url" placeholder="${t('optionalFallback')}"></div>`);if($(`iiif${id}`))$(`iiif${id}`).value=savedIIIF[id]||'';const fileInput=$(`file${id}`),nameInput=$(`dossierName${id}`),imageInput=$(`images${id}`);if(fileInput)fileInput.onchange=e=>loadFile(id,e.target.files);if(nameInput)nameInput.onchange=e=>{e.target.dataset.userEdited='true';names[id]=e.target.value.trim()||names[id];saveBrowserSession();if(groups.length){render();renderMovements()}};if(imageInput)imageInput.onchange=e=>loadImages(id,e.target.files);images[id]=images[id]||[];imageStatus[id]=imageStatus[id]||null;if(imageStatus[id])setImageStatus(id,imageStatus[id])});const lab=$('dossierNameA');if(lab&&rawByWitness.A?.length)lab.value=names.A||'';const add=$('addWitnessBtn');if(add){add.disabled=witnessIds.length>=10;add.title=add.disabled?t('witnessLimit'):''}const count=$('witnessLimit');if(count)count.textContent=add?.disabled?t('witnessLimit'):t('witnessCount',{n:witnessIds.length});}
 
-function addWitness(){if(witnessIds.length>=10)return;const id=String.fromCharCode(65+witnessIds.length);witnessIds.push(id);rawByWitness[id]=[];names[id]=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+(witnessIds.length-1);images[id]=[];imageStatus[id]=null;renderWitnessInputs();renderComparisonControl()}
+function addWitness(){if(witnessIds.length>=10)return;const id=String.fromCharCode(65+witnessIds.length);witnessIds.push(id);rawByWitness[id]=[];names[id]=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+(witnessIds.length-1);images[id]=[];imageStatus[id]=null;renderWitnessInputs();renderComparisonControl();saveBrowserSession()}
 function renderComparisonControl(){const control=$('comparisonControl'),select=$('compareWitness');if(!control||!select)return;const ids=Object.keys(pairResults);control.hidden=!ids.length||witnessView!=='pair';if(!ids.length)return;select.innerHTML=ids.map(id=>`<option value="${id}">${esc(names[id])}</option>`).join('');select.value=pairResults[activeWitness]?activeWitness:ids[0];select.onchange=()=>activatePair(select.value)}
 function activatePair(id,saveCurrent=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid: automatic')?'alignAutomaticHybrid':p.alignment_method.startsWith('hybrid:')?'alignHybrid':p.alignment_method.includes('bertalign +')?'alignBert':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){render();renderMovements();$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
 function renderAutomaticSemanticStatus(){
@@ -284,6 +284,7 @@ function renderAutomaticSemanticStatus(){
  if(diagnostic.status==='applied'&&failures.length)el.textContent+=' '+failures.map(status=>t('automatic_'+status)).join(' ');
 }
 function render(){
+ saveBrowserSession();
  renderAutomaticSemanticStatus();
  renderGenreEditor();
  $('witnessViews').hidden=!groups.length;
@@ -451,7 +452,7 @@ function setWitnessView(view,redraw=true){
  document.querySelectorAll('[data-witness-view]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.witnessView===view)));
  if(redraw){renderComparisonControl();render()}
 }
-function renderMovements(){const summary=$('movementSummary');if(!summary)return;summary.textContent=movementCandidates.length?t('movementCount',{n:movementCandidates.length}):t('movementNone');$('movementList').innerHTML=movementCandidates.map((c,i)=>{const status=movementDecisions[i]||'';return `<article class="verse-row" style="grid-template-columns:75px minmax(0,1fr) 200px"><div class="verse-num">${i+1}<span class="vbadge">${c.status==='ambiguous'?t('ambiguous'):t('possibleMove')}</span></div><div class="witnesses"><div class="witness-line"><div class="witness-label">${esc(names.A)}</div><div class="textline">${esc(c.text_a)}</div></div><div class="witness-line"><div class="witness-label">${esc(names[activeWitness])}</div><div class="textline">${esc(c.text_b)}</div></div><div class="status-note">score ${Number(c.score).toFixed(2)} · margin ${Number(c.margin).toFixed(2)} · ${esc(t(status==='confirm'?'confirmed':status==='reject'?'rejected':'ambiguous'))}</div></div><div class="row-actions"><button class="btn btn-outline" onclick="openMovementImages(${i})">${t('openSources')}</button><button class="btn btn-green" onclick="setMovement(${i},'confirm')">${t('confirmMove')}</button><button class="btn btn-danger" onclick="setMovement(${i},'reject')">${t('rejectMove')}</button></div></article>`}).join('');$('ambiguityList').innerHTML=ambiguousCases.length?ambiguousCases.map(x=>`<div class="variant-item">${esc(x.text_a)} ↔ ${esc(x.text_b)} · ${x.count}</div>`).join(''):t('movementNone')}function setMovement(i,decision){movementDecisions[i]=decision;renderMovements()}async function openMovementImages(i){const c=movementCandidates[i];await renderImageCompare(t('possibleMove')+' · '+(i+1),c.source_a||[],c.source_b||[])}
+function renderMovements(){const summary=$('movementSummary');if(!summary)return;summary.textContent=movementCandidates.length?t('movementCount',{n:movementCandidates.length}):t('movementNone');$('movementList').innerHTML=movementCandidates.map((c,i)=>{const status=movementDecisions[i]||'';return `<article class="verse-row" style="grid-template-columns:75px minmax(0,1fr) 200px"><div class="verse-num">${i+1}<span class="vbadge">${c.status==='ambiguous'?t('ambiguous'):t('possibleMove')}</span></div><div class="witnesses"><div class="witness-line"><div class="witness-label">${esc(names.A)}</div><div class="textline">${esc(c.text_a)}</div></div><div class="witness-line"><div class="witness-label">${esc(names[activeWitness])}</div><div class="textline">${esc(c.text_b)}</div></div><div class="status-note">score ${Number(c.score).toFixed(2)} · margin ${Number(c.margin).toFixed(2)} · ${esc(t(status==='confirm'?'confirmed':status==='reject'?'rejected':'ambiguous'))}</div></div><div class="row-actions"><button class="btn btn-outline" onclick="openMovementImages(${i})">${t('openSources')}</button><button class="btn btn-green" onclick="setMovement(${i},'confirm')">${t('confirmMove')}</button><button class="btn btn-danger" onclick="setMovement(${i},'reject')">${t('rejectMove')}</button></div></article>`}).join('');$('ambiguityList').innerHTML=ambiguousCases.length?ambiguousCases.map(x=>`<div class="variant-item">${esc(x.text_a)} ↔ ${esc(x.text_b)} · ${x.count}</div>`).join(''):t('movementNone')}function setMovement(i,decision){movementDecisions[i]=decision;saveBrowserSession();renderMovements()}async function openMovementImages(i){const c=movementCandidates[i];await renderImageCompare(t('possibleMove')+' · '+(i+1),c.source_a||[],c.source_b||[])}
 function rowHTML(which,arr,tokens,idx){
  const id=which==='B'?activeWitness:which;
  const line=arr.length?renderText(tokens,idx):`<em class="status-note">${t('noPassage')}</em>`;
@@ -503,7 +504,7 @@ function saveAdjustedUnit(){const previousGroups=groups,previousDecisions=decisi
 function similarityClient(a,b){const x=tokenKey(a).split('').join(' '),y=tokenKey(b).split('').join(' ');if(!x&&!y)return 1;if(!x||!y)return 0;let prev=Array.from({length:y.length+1},(_,i)=>i);for(let i=1;i<=x.length;i++){const cur=[i];for(let j=1;j<=y.length;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(x[i-1]===y[j-1]?0:1));prev=cur}return Math.max(0,1-prev[y.length]/Math.max(x.length,y.length))}
 function resolveImage(which,ref){return resolveWitnessImage(which==='B'?activeWitness:which,ref)}
 function resolveWitnessImage(id,ref){if(!ref)return null;const key=`${id}:${ref.alto_file||ref.page}`;if(imageOverrides[key])return imageOverrides[key];const stem=s=>String(s||'').split('/').pop().replace(/\.[^.]+$/,'').toLowerCase();const wanted=[stem(ref.image_file),stem(ref.alto_file),stem(ref.page)].filter(Boolean);let match=images[id].find(x=>wanted.some(w=>stem(x.name)===w||stem(x.name).includes(w)||w.includes(stem(x.name))));if(!match&&images[id].length===1)match=images[id][0];if(!match){const uri=$(`iiif${id}`).value.trim();if(uri)return {name:t('imageFallback'),url:uri}}return match||null}
-function chooseImage(which,ref){if(!ref)return null;const id=which==='B'?activeWitness:which;let found=resolveImage(which,ref);if(found)return found;if(!images[id].length)return null;let list=images[id].map((x,i)=>`${i+1}. ${x.name}`).join('\n');let n=Number(prompt(t('chooseImage',{page:ref?.page||'',w:names[id],list})));if(Number.isInteger(n)&&n>0&&n<=images[id].length){let item=images[id][n-1];imageOverrides[`${id}:${ref?.alto_file||ref?.page}`]=item;projectImageLinks[`${id}:${ref?.alto_file||ref?.page}`]=item.name;return item}return null}
+function chooseImage(which,ref){if(!ref)return null;const id=which==='B'?activeWitness:which;let found=resolveImage(which,ref);if(found)return found;if(!images[id].length)return null;let list=images[id].map((x,i)=>`${i+1}. ${x.name}`).join('\n');let n=Number(prompt(t('chooseImage',{page:ref?.page||'',w:names[id],list})));if(Number.isInteger(n)&&n>0&&n<=images[id].length){let item=images[id][n-1];imageOverrides[`${id}:${ref?.alto_file||ref?.page}`]=item;projectImageLinks[`${id}:${ref?.alto_file||ref?.page}`]=item.name;saveBrowserSession();return item}return null}
 async function cropLine(imageUrl,ref){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{try{const vals=String(ref.coords||'').split(',').map(Number);if(vals.length<4||vals.some(v=>!Number.isFinite(v))){resolve(null);return}let[x,y,w,h]=vals;const pw=Number(ref.page_width)||image.naturalWidth,ph=Number(ref.page_height)||image.naturalHeight,sx=image.naturalWidth/pw,sy=image.naturalHeight/ph;let left=x*sx,top=y*sy,width=w*sx,height=h*sy,padX=Math.max(12,height*.18),padY=Math.max(8,height*.24);left=Math.max(0,left-padX);top=Math.max(0,top-padY);width=Math.min(image.naturalWidth-left,width+padX*2);height=Math.min(image.naturalHeight-top,height+padY*2);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));canvas.getContext('2d').drawImage(image,left,top,width,height,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/png'))}catch(e){reject(e)}};image.onerror=()=>reject(Error('Immagine non leggibile'));image.src=imageUrl})}
 async function sourceLineCard(which,ref,automatic=false){const id=automatic?which:which==='B'?activeWitness:which,item=automatic?resolveWitnessImage(id,ref):chooseImage(which,ref);let crop=null;if(item&&ref)try{crop=await cropLine(item.url,ref)}catch(e){}const text=ref?.line_text||t('notAvailable');return `<figure class="source-line-card"><figcaption><b>${esc(names[id])}</b><span>${esc(ref?`${ref.alto_file||''} · ${t('page')} ${ref.page} · ${t('line')} ${ref.line}`:'')}</span></figcaption>${crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref?.page||'')}">`:`<div class="no-image">${t('missingImage')}</div>`}${item?`<details class="full-page-details"><summary>${t('fullPage')}</summary><img class="full-page" src="${esc(item.url)}" alt="${t('fullPage')} ${esc(ref?.page||'')}"></details>`:''}<div class="image-reading">${esc(text)}</div></figure>`}
 async function openImages(unitIndex){const g=groups[unitIndex],ra=groupItems(A,g,'A').flatMap(x=>x.refs||[]),rb=groupItems(B,g,'B').flatMap(x=>x.refs||[]);await renderImageCompare(t('lineCompare',{n:unitIndex+1}),ra,rb)}async function renderImageCompare(title,ra,rb){const modal=$('modal');modal.innerHTML=`<div class="iiif-modal"><div class="iiif-box image-compare"><div class="iiif-head"><span>${esc(title)}</span><button class="btn btn-outline" onclick="$('modal').innerHTML=''">${t('close')}</button></div><div class="line-compare"><section class="line-witness"><h3>${esc(names.A)} <small>${t('rows',{n:ra.length})}</small></h3><div id="lineA"></div></section><section class="line-witness"><h3>${esc(names[activeWitness])} <small>${t('rows',{n:rb.length})}</small></h3><div id="lineB"></div></section></div><p class="crop-note">${t('cropNote')}</p></div></div>`;const [cardsA,cardsB]=await Promise.all([Promise.all(ra.map(r=>sourceLineCard('A',r))),Promise.all(rb.map(r=>sourceLineCard('B',r)))]);if(!document.getElementById('lineA'))return;$('lineA').innerHTML=cardsA.join('')||`<div class="no-image">${t('noPassageIn',{w:'A'})}</div>`;$('lineB').innerHTML=cardsB.join('')||`<div class="no-image">${t('noPassageIn',{w:'B'})}</div>`}
@@ -581,7 +582,7 @@ function confirmTeiExport(){
   if(draft.mode==='mixed')VariansExport.validateGenreRanges(ranges,exportReferenceUnits().length);
   const xml=buildTEI(ranges,draft.genre,draft.titles);
   uniformGenre=draft.genre;titleLines=draft.titles;genreRanges=ranges.map(r=>({...r}));
-  download(t('teiName'),xml,'application/tei+xml');$('teiExportDialog').close();teiExportDraft=null;
+  saveBrowserSession();download(t('teiName'),xml,'application/tei+xml');$('teiExportDialog').close();teiExportDraft=null;
  }catch(error){$('teiExportError').textContent=exportError(error)}
 }
 function buildJSONExport(){
@@ -624,14 +625,15 @@ function showRecurring(){let counts={};groups.forEach((g,i)=>compareUnit(groupTe
 // Versioned portable sessions. Images remain external; blob URLs never persist.
 let projectImageLinks={},projectImageFiles={},pendingProjectOperations=0,projectOpening=false;
 const PROJECT_FORMAT='varians-project',PROJECT_VERSION=1,MAX_PROJECT_BYTES=100*1024*1024;
-function captureProject(){
+function captureProject(detach=true){
  const reviews=Object.fromEntries(Object.keys(pairResults).map(id=>[id,currentReview(id)]));
  const state={witnessIds,names:Object.fromEntries(witnessIds.map(id=>[id,names[id]])),rawByWitness:Object.fromEntries(witnessIds.map(id=>[id,rawByWitness[id]])),pairResults,pairReviews:reviews,activeWitness,editedMode,
   language,viewFilter,genre:uniformGenre,genreRanges,titleLines:[...titleLines],
   iiif:Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||''])),
   imageFiles:Object.fromEntries(witnessIds.map(id=>[id,images[id]?.length?images[id].map(x=>x.name):(projectImageFiles[id]||[])])),
   imageLinks:{...projectImageLinks,...Object.fromEntries(Object.entries(imageOverrides).map(([key,item])=>[key,item.name]))}};
- return JSON.parse(JSON.stringify({format:PROJECT_FORMAT,version:PROJECT_VERSION,state}));
+ const project={format:PROJECT_FORMAT,version:PROJECT_VERSION,state};
+ return detach?JSON.parse(JSON.stringify(project)):project;
 }
 function validateProject(project){
  const fail=()=>{throw Error(t('invalidProject'))},obj=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
@@ -678,6 +680,75 @@ function validateProject(project){
  if(Object.keys(s.pairResults).length?!Object.hasOwn(s.pairResults,s.activeWitness):s.activeWitness!=='B')fail();
  return s;
 }
+Object.assign(messages.en,{sessionRestored:'Session restored',sessionStorageUnavailable:'Automatic session saving is unavailable. You can still use Save project.'});
+Object.assign(messages.it,{sessionRestored:'Sessione ripristinata',sessionStorageUnavailable:'Il salvataggio automatico non è disponibile. Puoi usare Salva progetto.'});
+Object.assign(messages.fr,{sessionRestored:'Session restaurée',sessionStorageUnavailable:'La sauvegarde automatique est indisponible. Vous pouvez utiliser Enregistrer le projet.'});
+let sessionDB,sessionKey,sessionSaveScheduled=false,sessionImagesDirty=false,sessionRestoring=true;
+function saveBrowserSession(imagesChanged=false){
+ sessionImagesDirty||=imagesChanged;
+ if(!sessionDB||sessionRestoring||pendingProjectOperations||sessionSaveScheduled)return;
+ sessionSaveScheduled=true;
+ queueMicrotask(()=>{
+  sessionSaveScheduled=false;
+  if(pendingProjectOperations||sessionRestoring)return;
+  try{
+   const saved={project:captureProject(false),view:{witnessView,focusRow}};
+   const files=sessionImagesDirty?Object.fromEntries(witnessIds.map(id=>[id,images[id].map(item=>item.file)])):null;
+   const transaction=sessionDB.transaction('sessions','readwrite'),store=transaction.objectStore('sessions');
+   transaction.onabort=()=>{
+    sessionImagesDirty||=!!files;
+    $('sessionStatus').textContent=t('sessionStorageUnavailable');
+   };
+   store.put(saved,sessionKey);
+   if(files){
+    store.put(files,sessionKey+':images');
+    sessionImagesDirty=false;
+   }
+  }catch(error){$('sessionStatus').textContent=t('sessionStorageUnavailable')}
+ });
+}
+function sessionRequest(request){
+ return new Promise((resolve,reject)=>{
+  request.onsuccess=()=>resolve(request.result);
+  request.onerror=()=>reject(request.error);
+ });
+}
+async function restoreBrowserSession(){
+ if(typeof indexedDB==='undefined')return;
+ const main=document.querySelector('main');
+ main.inert=true;
+ try{
+  sessionKey=sessionStorage.getItem('varians-session');
+  if(!sessionKey){sessionKey=Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16).padStart(8,'0')).join('');sessionStorage.setItem('varians-session',sessionKey)}
+  const request=indexedDB.open('varians-workspace',1);
+  request.onupgradeneeded=()=>request.result.createObjectStore('sessions');
+  sessionDB=await sessionRequest(request);
+  const store=sessionDB.transaction('sessions').objectStore('sessions');
+  const [saved,files]=await Promise.all([sessionRequest(store.get(sessionKey)),sessionRequest(store.get(sessionKey+':images'))]);
+  if(!saved)return;
+  restoreProject(validateProject(saved.project));
+  for(const id of witnessIds){
+   const restored=(files?.[id]||[]).filter(file=>file instanceof File&&projectImageFiles[id].includes(file.name));
+   images[id]=restored.map(file=>({file,name:file.name,url:URL.createObjectURL(file)}));
+   for(const [key,name] of Object.entries(projectImageLinks)){
+    if(!key.startsWith(id+':'))continue;
+    const item=images[id].find(candidate=>candidate.name===name);
+    if(item)imageOverrides[key]=item;
+   }
+   if(restored.length)setImageStatus(id,{good:restored.map(file=>file.name),bad:[]});
+  }
+  const view=saved.view;
+  if(Number.isSafeInteger(view?.focusRow)&&view.focusRow>=0)focusRow=view.focusRow;
+  if(['pair','all','focus'].includes(view?.witnessView))setWitnessView(view.witnessView);
+  $('projectStatus').textContent='';
+  $('sessionStatus').textContent=t('sessionRestored');
+ }catch(error){
+  $('sessionStatus').textContent=t('sessionStorageUnavailable');
+ }finally{
+  sessionRestoring=false;
+  main.inert=false;
+ }
+}
 function saveProject(){
  if(pendingProjectOperations){alert(t('projectBusy'));return}
  if(!Object.values(rawByWitness).some(files=>files.length)&&!Object.keys(pairResults).length){alert(t('projectEmpty'));return}
@@ -720,14 +791,15 @@ async function openProjectFile(file){
   const hasSession=Object.values(rawByWitness).some(files=>files.length)||Object.keys(pairResults).length||alignmentDraft||$('editA');
   if(hasSession&&!confirm(t('replaceProject')))return;
   restoreProject(s);
+  sessionImagesDirty=true;
  }catch(error){$('projectStatus').textContent=t('error')+(error instanceof SyntaxError?t('invalidProject'):error.message)}
- finally{pendingProjectOperations--;projectOpening=false; $('projectFile').value=''}
+ finally{pendingProjectOperations--;projectOpening=false; $('projectFile').value='';saveBrowserSession()}
 }
 // Opening/saving a snapshot while an asynchronous import is unfinished would
 // mix two sessions. Keep the current session intact until each operation ends.
 for(const name of ['loadFile','loadImages','runAlign']){
  const original=name==='loadFile'?loadFile:name==='loadImages'?loadImages:runAlign;
- const tracked=async(...args)=>{if(projectOpening){alert(t('projectBusy'));return}pendingProjectOperations++;try{return await original(...args)}finally{pendingProjectOperations--}};
+ const tracked=async(...args)=>{if(projectOpening){alert(t('projectBusy'));return}pendingProjectOperations++;try{return await original(...args)}finally{pendingProjectOperations--;saveBrowserSession(name==='loadImages')}};
  if(name==='loadFile')loadFile=tracked;else if(name==='loadImages')loadImages=tracked;else runAlign=tracked;
 }
 $('saveProject').onclick=()=>{try{saveProject()}catch(error){$('projectStatus').textContent=t('error')+error.message}};
@@ -769,6 +841,7 @@ document.addEventListener?.('keydown',event=>{
 });
 $('exportTei').onclick=()=>{setExportMenu(false);exportButton.focus();exportTEI()};
 $('exportJson').onclick=()=>{setExportMenu(false);exportButton.focus();exportJSON()};
-const addWitnessButton=$('addWitnessBtn');if(addWitnessButton)addWitnessButton.addEventListener('click',event=>{event.preventDefault();try{addWitness()}catch(error){console.error('Could not add witness:',error);const status=$('loadedStatus');if(status)status.textContent=`Could not add witness: ${error.message}`}});$('fileA').onchange=e=>loadFile('A',e.target.files);$('dossierNameA').onchange=e=>{e.target.dataset.userEdited='true';names.A=e.target.value.trim()||names.A;if(groups.length){render();renderMovements()}};$('imagesA').onchange=e=>loadImages('A',e.target.files);$('alignBtn').onclick=runAlign;$('recurringBtn').onclick=showRecurring;$('nextPendingBtn').onclick=nextPending;$('resultFilter').onchange=e=>{viewFilter=e.target.value;render()};$('language').onchange=e=>setLanguage(e.target.value);
+const addWitnessButton=$('addWitnessBtn');if(addWitnessButton)addWitnessButton.addEventListener('click',event=>{event.preventDefault();try{addWitness()}catch(error){console.error('Could not add witness:',error);const status=$('loadedStatus');if(status)status.textContent=`Could not add witness: ${error.message}`}});$('fileA').onchange=e=>loadFile('A',e.target.files);$('dossierNameA').onchange=e=>{e.target.dataset.userEdited='true';names.A=e.target.value.trim()||names.A;saveBrowserSession();if(groups.length){render();renderMovements()}};$('imagesA').onchange=e=>loadImages('A',e.target.files);$('alignBtn').onclick=runAlign;$('recurringBtn').onclick=showRecurring;$('nextPendingBtn').onclick=nextPending;$('resultFilter').onchange=e=>{viewFilter=e.target.value;render()};$('language').onchange=e=>setLanguage(e.target.value);
 window.loadFile=loadFile;window.addWitness=addWitness;window.alignmentDraft=alignmentDraft;window.adjustUnit=adjustUnit;window.selectDraftSide=selectDraftSide;window.updateDraftPositions=updateDraftPositions;window.saveAdjustedUnit=saveAdjustedUnit;window.splitDraftLine=splitDraftLine;window.moveDraftLine=moveDraftLine;window.setMovement=setMovement;window.openMovementImages=openMovementImages;window.setVariant=setVariant;window.setAll=setAll;window.editUnit=editUnit;window.saveEdit=saveEdit;window.openImages=openImages;window.goToUnit=goToUnit;window.$=$;
 setLanguage('en');
+const sessionReady=restoreBrowserSession();

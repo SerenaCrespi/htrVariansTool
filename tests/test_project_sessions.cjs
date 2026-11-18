@@ -37,6 +37,11 @@ async function download(page,button){
  });
  return readFile(await file.path(),'utf8');
 }
+async function reloadWithoutSession(page){
+ await page.evaluate(()=>sessionStorage.removeItem('varians-session'));
+ await page.reload();
+ await page.evaluate(()=>sessionReady);
+}
 async function open(page,content){await page.locator('#projectFile').setInputFiles({name:'project.json',mimeType:'application/json',buffer:Buffer.from(content)});await page.waitForFunction(()=>pendingProjectOperations===0)}
 
 test('save/reopen preserves multi-witness edits, decisions, exports, settings and image links',async()=>{
@@ -78,7 +83,7 @@ test('save/reopen preserves multi-witness edits, decisions, exports, settings an
  const expected=await page.evaluate(()=>captureProject());
  const jsonBefore=await download(page,'#exportJson'),teiBefore=await download(page,'#exportTei');
  const saved=await download(page,'#saveProject');assert.deepEqual(JSON.parse(saved),expected);assert.ok(!saved.includes('blob:'));
- await page.reload();await open(page,saved);
+ await reloadWithoutSession(page);await open(page,saved);
  assert.deepEqual(await page.evaluate(()=>captureProject()),expected);
  assert.match(await page.locator('#projectStatus').textContent(),/Progetto aperto/);
  assert.equal(await page.locator('#compareWitness').inputValue(),'C');
@@ -106,7 +111,7 @@ test('invalid and unsupported files preserve the current session; replacement ca
 
 test('a project saved before alignment reopens with its ALTO files ready to align',async()=>{
  const page=await browser.newPage();await page.goto(url);await upload(page,'#fileA',['testo prima della collazione']);
- const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ const saved=await download(page,'#saveProject');await reloadWithoutSession(page);await open(page,saved);
  await page.locator('#addWitnessBtn').click();await upload(page,'#fileB',['testo dopo la collazione']);
  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
  assert.ok(await page.locator('#results article').count());await page.close();
@@ -165,7 +170,7 @@ test('mixed prose/poetry and name-based IDs export consistently and survive proj
  assert.deepEqual(parsed.paragraphs,['Prima frase completa in prosa','Ultima frase completa in prosa']);
  assert.equal(parsed.groups,1);assert.equal(parsed.lines.length,2);assert.ok(parsed.readings.includes('mutato'));
  assert.equal(parsed.lines[1],'Secondo verso risuona');
- const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ const saved=await download(page,'#saveProject');await reloadWithoutSession(page);await open(page,saved);
  assert.equal(await download(page,'#exportTei'),tei);
  assert.deepEqual(JSON.parse(await download(page,'#exportJson')),json);
  // Old saved sessions without the optional range field still reopen uniformly.
@@ -226,7 +231,7 @@ test('prose joins review units while poetry preserves original ALTO lines after 
  const poetry=await download(page,'#confirmTeiExport');
  const verses=await page.evaluate(xml=>[...new DOMParser().parseFromString(xml,'application/xml').getElementsByTagName('l')].map(el=>el.textContent),poetry);
  assert.deepEqual(verses,lines);
- const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ const saved=await download(page,'#saveProject');await reloadWithoutSession(page);await open(page,saved);
  assert.equal(await download(page,'#exportTei'),poetry);assert.deepEqual(errors,[]);await page.close();
 });
 
@@ -257,7 +262,7 @@ test('editing one reading keeps earlier/later decisions and other witness review
  const results=JSON.parse(await download(page,'#exportJson'));
  const exported=Object.values(results.comparisons)[0].alignments;
  for(const i of [0,1,3])assert.deepEqual(exported[i].decisions,expectedDecisions[i]);assert.deepEqual(exported[2].decisions,{});
- const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ const saved=await download(page,'#saveProject');await reloadWithoutSession(page);await open(page,saved);
  assert.deepEqual(await page.evaluate(()=>captureProject()),after);
  assert.deepEqual(errors,[]);await page.close();
 });
@@ -301,7 +306,7 @@ test('automatic fallback is surfaced without any semantic action and survives sa
  await page.locator('#resultFilter').selectOption('uncertain');assert.equal(await page.locator('#results article').count(),1);
  const json=JSON.parse(await download(page,'#exportJson')),comparison=Object.values(json.comparisons)[0];
  assert.equal(comparison.semanticFallback.status,'applied');assert.equal(comparison.alignments[1].alignmentSource,'bertalign_automatic');assert.equal(comparison.alignments[1].requiresReview,true);
- const expected=await page.evaluate(()=>captureProject()),saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ const expected=await page.evaluate(()=>captureProject()),saved=await download(page,'#saveProject');await reloadWithoutSession(page);await open(page,saved);
  assert.deepEqual(await page.evaluate(()=>captureProject()),expected);assert.match(await page.locator('#automaticSemanticStatus').textContent(),/1 of 1/);assert.deepEqual(errors,[]);await page.close();
 });
 
@@ -345,7 +350,7 @@ test('adding a witness aligns only the new pair and preserves previous edits and
  assert.deepEqual(await page.evaluate(()=>decisions),before.state.pairReviews.B.decisions);
  assert.deepEqual(await page.evaluate(()=>movementDecisions),before.state.pairReviews.B.movementDecisions);
  assert.match(await page.locator('#unit-0').textContent(),/variante corretta/);
- const saved=await download(page,'#saveProject');await page.reload();await open(page,saved);
+ const saved=await download(page,'#saveProject');await reloadWithoutSession(page);await open(page,saved);
  assert.deepEqual(await page.evaluate(()=>captureProject()),after);assert.deepEqual(errors,[]);await page.close();
 });
 
@@ -424,7 +429,7 @@ test('alignment feedback and TEI titles work through the export menu',{timeout:2
   }
   const snapshot=await download(page,'#saveProject');
   assert.equal(JSON.parse(snapshot).state.titleLines.length,2);
-  await page.goto(url);
+  await reloadWithoutSession(page);
   await open(page,snapshot);
   const json=JSON.parse(await download(page,'#exportJson'));
   assert.equal(json.structure.titleLines.length,2);
@@ -469,6 +474,15 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
   await page.locator('#editB').fill('Prima riga corretta');
   await page.locator('#saveEditBtn').click();
   assert.match(await page.locator('.multi-reading').nth(1).innerText(),/corretta/);
+  await page.getByRole('button',{name:'Next line',exact:true}).click();
+  await page.reload();
+  await page.evaluate(()=>sessionReady);
+  assert.equal(await page.locator('[data-witness-view="focus"]').getAttribute('aria-pressed'),'true');
+  assert.match(await page.locator('.focus-nav').innerText(),/Line 2 of 2/);
+  await page.locator('#focusImages img.line-crop').nth(2).waitFor();
+  await page.getByRole('button',{name:'Previous line',exact:true}).click();
+  assert.match(await page.locator('.multi-reading').nth(1).innerText(),/corretta/);
+  assert.equal(await page.evaluate(()=>currentReview('C').decisions[0][0]),'keep');
   await page.getByRole('button',{name:'Pair',exact:true}).click();
   assert.match(await page.locator('#unit-0').innerText(),/corretta/);
  }finally{await page.close()}
