@@ -63,9 +63,11 @@ test('save/reopen preserves multi-witness edits, decisions, exports, settings an
  // Supply a deterministic movement candidate to cover reviewer decisions even
  // when these short fixtures do not produce a displacement suggestion.
  await page.evaluate(()=>{setAll(0,'keep');movementCandidates.push({text_a:'passo spostato',text_b:'passo spostato',source_a:[],source_b:[],score:1,margin:1,status:'possible_transposition'});setMovement(movementCandidates.length-1,'confirm');activatePair('C');setAll(0,'ignore')});
- await page.locator('.iiif-options summary').click();
- await page.locator('#iiifA').fill('https://example.org/a.jpg');
- await page.locator('#iiifB').fill('https://example.org/b.jpg');
+ // Populate legacy project fields to verify that existing IIIF links still round-trip.
+ await page.evaluate(()=>{
+  $('iiifA').value='https://example.org/a.jpg';
+  $('iiifB').value='https://example.org/b.jpg';
+ });
  await chooseExport(page,'#exportTei');
  await page.locator('#genre').selectOption('poetry');
  await download(page,'#confirmTeiExport');
@@ -385,6 +387,9 @@ test('alignment feedback and TEI titles work through the export menu',{timeout:2
  try{
   await page.goto(url);
   assert.equal(await page.locator('#resetBtn').count(),0);
+  for(const name of ['Optional IIIF fallback','Alignment review','Unmatched and possibly displaced passages']){
+   assert.equal(await page.getByRole('button',{name,exact:false}).count(),0);
+  }
   await upload(page,'#fileA',['Titolo','Prima riga','Secondo titolo','Seconda riga']);
   await page.locator('#addWitnessBtn').click();
   let release;
