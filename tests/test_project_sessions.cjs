@@ -845,5 +845,17 @@ test('the variants visualizer opens real TEI and JSON exports in a separate tab'
   assert.match(await viewer.locator('#details').innerText(),/Retained[\s\S]*riga → strofa/);
   await viewer.locator('#wit').selectOption({index:2});
   assert.match(await viewer.locator('#content').innerText(),/Prima strofa[\s\S]*Seconda riga/);
+  await page.getByRole('button',{name:'All witnesses',exact:true}).click();
+  const snapshot=await page.evaluate(()=>captureProject());
+  await Promise.all([viewer.waitForEvent('close'),viewer.getByRole('link',{name:'Varians workspace'}).click()]);
+  assert.equal(await page.locator('[data-witness-view="all"]').getAttribute('aria-pressed'),'true');
+  assert.deepEqual(await page.evaluate(()=>captureProject()),snapshot);
+
+  const standalone=await browser.newPage();
+  try{
+   await standalone.goto(new URL('/variants-visualizer.html',url).href);
+   await standalone.getByRole('link',{name:'Varians workspace'}).click();
+   await standalone.waitForURL(new URL('/',url).href);
+  }finally{await standalone.close()}
  }finally{await page.context().close()}
 });

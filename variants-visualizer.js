@@ -273,6 +273,20 @@ function step(direction) {
  loci[index].button.scrollIntoView({block: 'center'});
 }
 
+byId('back-to-workspace').addEventListener('click', event => {
+ if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+ const workspace = window.opener;
+ try {
+  if (!workspace || workspace.closed || workspace.location.origin !== location.origin ||
+      workspace.location.pathname !== '/') return;
+  event.preventDefault();
+  workspace.focus();
+  window.close();
+ } catch {
+  // A standalone viewer or an opener on another site uses the ordinary link.
+ }
+});
+
 byId('prev').onclick = () => step(-1);
 byId('next').onclick = () => step(1);
 witnessSelect.onchange = highlight.onchange = refresh;
