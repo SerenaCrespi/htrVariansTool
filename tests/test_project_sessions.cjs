@@ -645,6 +645,22 @@ print(json.dumps({'witnesses': {'A': a, 'B': b}, 'alignments': app.align_alto_wo
   assert.match(await reading.innerText(),/Autore al ser:mo Principe Leopoldo di Foscana in occasioni di mandargli il presente Poema/);
   assert.equal(await fragments.first().isVisible(),false);
   await card.locator('.witness-review-details summary').click();
+  assert.equal(await reading.locator('.token.var',{hasText:'Autore'}).count(),1);
+  assert.equal(await reading.locator('.token.var',{hasText:'Foscana'}).count(),1);
+  await fragments.nth(0).locator('.variant-item').filter({hasText:'Autore'}).getByRole('button',{name:'Keep',exact:true}).click();
+  assert.equal(await reading.locator('.token.keep',{hasText:'Autore'}).count(),1);
+  await fragments.nth(2).locator('.variant-item').filter({hasText:'Foscana'}).getByRole('button',{name:'Ignore',exact:true}).click();
+  assert.equal(await reading.locator('.token.ignore',{hasText:'Foscana'}).count(),1);
+  const retained=await page.evaluate(()=>[...new DOMParser().parseFromString(buildTEI(),'application/xml').getElementsByTagName('rdg')].map(node=>node.textContent));
+  assert.ok(retained.some(text=>text.includes('Autore')));
+  assert.ok(retained.every(text=>!text.includes('Foscana')));
+  assert.equal(await card.locator('.review-completed').count(),0);
+  const remaining=card.locator('.variant-item').filter({hasNot:page.locator('.chosen')});
+  const remainingCount=await remaining.count();
+  for(let i=0;i<remainingCount;i++){
+   await remaining.first().getByRole('button',{name:'Ignore',exact:true}).click();
+  }
+  assert.match(await card.locator('.review-completed').innerText(),/Revision completed/);
   const unit=await fragments.nth(1).getAttribute('data-pair-unit');
   await fragments.nth(1).locator('.pair-unit-link').click();
   const pair=page.locator(`#unit-${Number(unit)-1}`);

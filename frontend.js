@@ -572,13 +572,16 @@ function renderWitnessImages(rows,sources){
  witnessImageObserver=observer;
  for(const target of pending.keys())observer.observe(target);
 }
+messages.en.reviewCompleted='Revision completed';
+messages.it.reviewCompleted='Revisione completata';
+messages.fr.reviewCompleted='Révision terminée';
 messages.en.reviewFragments='Review details';
 messages.it.reviewFragments='Dettagli della revisione';
 messages.fr.reviewFragments='Détails de la révision';
 function combinedWitnessReading(readings,label,detailsOpen){
- const text=readings.flatMap(entry=>entry.right).map(item=>item.text).filter(Boolean).join(' ');
+ const text=readings.map(entry=>renderText(entry.diff.bb,entry.index,entry.review)).filter(Boolean).join(' ');
  const needsReview=readings.some(entry=>entry.uncertain);
- return `<div class="multi-reading"><div class="textline">${esc(text)||`<em>${t('noPassage')}</em>`}</div>
+ return `<div class="multi-reading"><div class="textline">${text||`<em>${t('noPassage')}</em>`}</div>
  <details class="witness-review-details" ${detailsOpen?'open':''}><summary>${t('reviewFragments')}${needsReview?` <span class="status-note">${t('needsReview')}</span>`:''}</summary>
  ${readings.map((entry,index)=>witnessReading(entry,false,`${label}.${index+1}`,false)).join('')}
  </details></div>`;
@@ -601,8 +604,13 @@ function renderWitnessComparison(){
  const openReview=new Set([...$('results').querySelectorAll('.witness-review-details[open]')].map(node=>
   `${node.closest('article').id}:${node.closest('.witness-card').dataset.witness}`));
 
- const card=(id,readings)=>`<section class="witness-card ${id==='A'?'witness-reference':''}" data-witness="${id}">
- <h4>${esc(names[id])}</h4>${readings}<div class="witness-facsimiles" data-witness-facsimiles="${id}"></div></section>`;
+ const card=(id,reading,entries=[])=>{
+  const complete=entries.some(entry=>entry.diff.diff.length)&&entries.every(entry=>entry.pending===0);
+  return `<section class="witness-card ${id==='A'?'witness-reference':''}" data-witness="${id}">
+  <div class="witness-card-heading"><h4>${esc(names[id])}</h4>${complete?
+   `<span class="review-completed" role="status"><span class="review-check" aria-hidden="true">✓</span>${t('reviewCompleted')}</span>`:''}</div>
+  ${reading}<div class="witness-facsimiles" data-witness-facsimiles="${id}"></div></section>`;
+ };
  const text=row=>{
   const referenceText=row.reference.map(unit=>unit.text).join(' ');
   const reference=card('A',`<div class="multi-reading"><div class="textline">${esc(referenceText)||'—'}</div></div>`);
@@ -610,9 +618,9 @@ function renderWitnessComparison(){
   ${ids.map(id=>{
    const readings=row.entries.filter(entry=>entry.id===id);
    const pairText=readings.flatMap(entry=>entry.left).map(item=>item.text).join(' ');
-   if(readings.length>1)return card(id,combinedWitnessReading(readings,row.index+1,openReview.has(`witness-unit-${row.index}:${id}`)));
+   if(readings.length>1)return card(id,combinedWitnessReading(readings,row.index+1,openReview.has(`witness-unit-${row.index}:${id}`)),readings);
    return card(id,readings.length?witnessReading(readings[0],pairText!==referenceText,row.index+1):
-    `<div class="multi-reading textline"><em>${t('noPassage')}</em></div>`);
+    `<div class="multi-reading textline"><em>${t('noPassage')}</em></div>`,readings);
   }).join('')}</div></div>`;
  };
  const showImages=rows=>{
