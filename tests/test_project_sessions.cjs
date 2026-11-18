@@ -540,6 +540,12 @@ test('partial readings keep the full ALTO transcription and its word geometry in
   await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
   await page.getByRole('button',{name:'All witnesses',exact:true}).click();
   await page.locator('.witness-card[data-witness="B"] .witness-facsimiles').nth(1).scrollIntoViewIfNeeded();
+  const facsimiles=page.locator('.witness-card[data-witness="B"] .witness-facsimiles').nth(1);
+  await facsimiles.getByText('No image associated.',{exact:true}).waitFor();
+  assert.equal(await facsimiles.locator('.facsimile-transcription').count(),0);
+  const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6D2sAAAAASUVORK5CYII=';
+  await page.locator('#imagesB').setInputFiles({name:'page.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
+  await facsimiles.scrollIntoViewIfNeeded();
   const selected=page.locator('.witness-card[data-witness="B"]').filter({has:page.locator('mark.facsimile-selected',{hasText:'testo'})});
   await selected.locator('.facsimile-context').first().waitFor();
   assert.deepEqual(await selected.locator('.facsimile-context').allTextContents(),['prima','dopo']);
