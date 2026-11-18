@@ -456,21 +456,34 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
   const first=page.locator('.multi-row').first();
   assert.equal(await first.locator('.multi-reading').count(),3);
   assert.match(await first.innerText(),/riferimento[\s\S]*confronto[\s\S]*verifica/);
+  assert.equal(await first.locator('.witness-reference[data-witness="A"]').count(),1);
+  assert.equal(await first.locator('.witness-scroll .witness-card').count(),2);
+  await page.setViewportSize({width:480,height:850});
+  const scroll=await first.locator('.witness-board').evaluate(board=>{
+   const area=board.querySelector('.witness-scroll'),reference=board.querySelector('.witness-reference');
+   const before=reference.getBoundingClientRect().left;
+   area.scrollLeft=area.scrollWidth;
+   return {moved:area.scrollLeft>0,fixed:reference.getBoundingClientRect().left===before};
+  });
+  assert.deepEqual(scroll,{moved:true,fixed:true});
+  await page.setViewportSize({width:1280,height:900});
   await first.locator('.multi-reading').nth(2).getByRole('button',{name:'Keep',exact:true}).first().click();
   assert.equal(await page.evaluate(()=>currentReview('C').decisions[0][0]),'keep');
   assert.deepEqual(await page.evaluate(()=>currentReview('B').decisions),{});
 
   await page.getByRole('button',{name:'Line by line',exact:true}).click();
   assert.equal(await page.locator('.multi-row').count(),1);
-  await page.locator('#focusImages figure').nth(2).waitFor();
-  assert.equal(await page.locator('#focusImages img.line-crop').count(),3);
+  await page.locator('[data-witness-facsimiles="C"]').scrollIntoViewIfNeeded();
+  await page.locator('.witness-facsimiles figure').nth(2).waitFor();
+  assert.equal(await page.locator('.witness-facsimiles img.line-crop').count(),3);
   await page.getByRole('button',{name:'Next line',exact:true}).click();
   assert.match(await page.locator('.focus-nav').innerText(),/Line 2 of 2/);
   await page.getByRole('button',{name:'Previous line',exact:true}).click();
   await page.locator('.multi-reading').nth(1).getByRole('button',{name:'Edit text',exact:true}).click();
   assert.equal(await page.locator('#focusEditor #editB').count(),1);
   assert.equal(await page.locator('#modal #editB').count(),0);
-  await page.locator('#focusImages img.line-crop').first().waitFor();
+  await page.locator('[data-witness-facsimiles="A"]').scrollIntoViewIfNeeded();
+  await page.locator('.witness-facsimiles img.line-crop').first().waitFor();
   await page.locator('#editB').fill('Prima riga corretta');
   await page.locator('#saveEditBtn').click();
   assert.match(await page.locator('.multi-reading').nth(1).innerText(),/corretta/);
@@ -479,7 +492,8 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
   await page.evaluate(()=>sessionReady);
   assert.equal(await page.locator('[data-witness-view="focus"]').getAttribute('aria-pressed'),'true');
   assert.match(await page.locator('.focus-nav').innerText(),/Line 2 of 2/);
-  await page.locator('#focusImages img.line-crop').nth(2).waitFor();
+  await page.locator('[data-witness-facsimiles="C"]').scrollIntoViewIfNeeded();
+  await page.locator('.witness-facsimiles img.line-crop').nth(2).waitFor();
   await page.getByRole('button',{name:'Previous line',exact:true}).click();
   assert.match(await page.locator('.multi-reading').nth(1).innerText(),/corretta/);
   assert.equal(await page.evaluate(()=>currentReview('C').decisions[0][0]),'keep');
@@ -498,5 +512,28 @@ test('alignment streams actual stages and preserves the JSON endpoint',async()=>
   assert.deepEqual(events.slice(0,-1),[{completed:1},{completed:2},{completed:3}]);
   const json=await page.request.post(url+'/api/align',{data});
   assert.deepEqual(events.at(-1).result,await json.json());
+ }finally{await page.close()}
+});
+
+test('partial readings keep the full ALTO transcription and its word geometry in the facsimile',async()=>{
+ const page=await browser.newPage();
+ try{
+  await page.goto(url);
+  await upload(page,'#fileA',['testo scelto']);
+  await page.locator('#addWitnessBtn').click();
+  const xml='<alto><Layout><Page ID="p" WIDTH="100" HEIGHT="100"><TextBlock><TextLine ID="l" HPOS="1" VPOS="10" WIDTH="95" HEIGHT="20"><String CONTENT="prima" HPOS="1" VPOS="10" WIDTH="20" HEIGHT="20"/><String CONTENT="testo" HPOS="25" VPOS="10" WIDTH="20" HEIGHT="20"/><String CONTENT="scelto" HPOS="50" VPOS="10" WIDTH="20" HEIGHT="20"/><String CONTENT="dopo" HPOS="75" VPOS="10" WIDTH="20" HEIGHT="20"/></TextLine></TextBlock></Page></Layout></alto>';
+  await page.locator('#fileB').setInputFiles({name:'page.xml',mimeType:'text/xml',buffer:Buffer.from(xml)});
+  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+  await page.getByRole('button',{name:'All witnesses',exact:true}).click();
+  await page.locator('.witness-card[data-witness="B"] .witness-facsimiles').nth(1).scrollIntoViewIfNeeded();
+  const selected=page.locator('.witness-card[data-witness="B"]').filter({has:page.locator('mark.facsimile-selected',{hasText:'testo'})});
+  await selected.locator('.facsimile-context').first().waitFor();
+  assert.deepEqual(await selected.locator('.facsimile-context').allTextContents(),['prima','dopo']);
+  const areas=await page.evaluate(()=>{
+   const source=pairResults.B.B[0].refs[0];
+   const lines=witnessSourceLines([{text:'testo scelto',refs:[source]}],new Map([[VariansExport.sourceLineKey(source),source]]));
+   return facsimileAreas(lines[0]);
+  });
+  assert.deepEqual(areas,[[[25,10],[45,10],[45,30],[25,30]],[[50,10],[70,10],[70,30],[50,30]]]);
  }finally{await page.close()}
 });

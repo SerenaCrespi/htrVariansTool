@@ -69,8 +69,13 @@ def parse_alto(xml_text: str, alto_file: str = "", next_page_start: list[str] | 
             saw_lines = True
             # ALTO can store a line as several String elements. Join their
             # CONTENT values while keeping the TextLine as the source unit.
-            line_words = [node.get("CONTENT", "") for node in line.iter()
-                          if local_name(node.tag) == "String" and node.get("CONTENT")]
+            strings = [node for node in line.iter()
+                       if local_name(node.tag) == "String" and node.get("CONTENT")]
+            line_words = [node.get("CONTENT") for node in strings]
+            word_boxes = []
+            for node in strings:
+                box = ",".join(node.get(key, "") for key in ("HPOS", "VPOS", "WIDTH", "HEIGHT"))
+                word_boxes.extend([box] * len(node.get("CONTENT").split()))
             if not line_words:
                 continue
             line_text = " ".join(line_words)
@@ -93,6 +98,7 @@ def parse_alto(xml_text: str, alto_file: str = "", next_page_start: list[str] | 
                 "line_text": line_text,
                 "coords": ",".join(line.get(key, "") for key in ("HPOS", "VPOS", "WIDTH", "HEIGHT")),
                 "polygon": polygon,
+                "word_boxes": word_boxes,
                 "block_id": block_id,
                 "block_tags": block_tags,
                 "line_tags": line_tags,

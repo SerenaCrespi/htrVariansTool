@@ -37,18 +37,27 @@
 #witnessViews button[aria-pressed="true"]{background:#6e1020;color:#fff}
 .multi-row{margin-bottom:10px;padding:12px;background:#fffdf8;border:1px solid #e2d8c0;border-inline-start:3px solid #c2a466;border-radius:5px}
 .multi-row h3{margin:0 0 10px;color:#6e1020}
-.multi-reading{padding:8px 0;border-bottom:1px solid #eee4d6}
-.multi-reading:last-child{border-bottom:none}
-.multi-reading .textline{margin-top:4px}
+.witness-board{display:grid;grid-template-columns:clamp(130px,24%,280px) minmax(0,1fr);gap:10px;align-items:start}
+.witness-board,.witness-scroll{min-width:0}
+.witness-scroll{display:flex;align-items:stretch;gap:10px;overflow-x:auto;padding:0 1px 7px;overscroll-behavior-inline:contain}
+.witness-card{box-sizing:border-box;min-width:0;min-height:130px;background:#fff;border:1px solid #e2d8d0;border-radius:6px;padding:10px;overflow-wrap:anywhere}
+.witness-scroll .witness-card{flex:1 0 clamp(180px,24vw,280px)}
+.witness-reference{background:#fcf3e3;border-color:#d4b980}
+.witness-card h4{margin:0 0 8px;color:#6e1020;font-size:.9rem}
+.multi-reading{margin-bottom:7px}
 .multi-reading .controls{margin-top:6px;flex-wrap:wrap}
+.witness-card .textline{padding:6px;font-size:.86rem}
+.witness-card .status-note{overflow-wrap:anywhere}
+.witness-facsimiles{margin-top:8px}
+.witness-facsimiles figure{margin:0 0 6px}
+.witness-facsimiles .line-crop,.witness-facsimiles .page-fallback{display:block;width:100%;max-height:80px;object-fit:contain;background:#f6f1e9}
+.facsimile-transcription{margin:3px 0 0;font-size:.78rem;line-height:1.4}
+.facsimile-context{color:#726b68}
+.facsimile-selected{color:#48101b;background:#faedc9}
 .focus-nav{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
-.focus-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px}
-.focus-images{min-width:0}
 #focusEditor:not(:empty){padding:10px;border:1px solid #d6b876;border-radius:5px;background:#fff9eb;margin-bottom:10px}
 .text-editor textarea{display:block;width:100%;min-height:80px;margin:5px 0 12px}
-.focus-images .source-line-card{margin:0 0 8px}
-.focus-images .line-crop,.focus-images .page-fallback{max-width:100%;height:auto}
-@media(max-width:780px){.focus-grid{grid-template-columns:1fr}}
+@media(max-width:520px){.witness-board{grid-template-columns:minmax(100px,40%) minmax(0,1fr);gap:6px}.witness-card{padding:7px}}
 #alignmentToast{position:fixed;bottom:20px;right:20px;z-index:10;display:flex;align-items:center;gap:12px;max-width:calc(100% - 40px);padding:10px 14px;background:#67111e;color:#fff9eb;border:1px solid #d6b876;border-radius:6px;box-shadow:0 6px 24px #39071133}
 #alignmentToast button{color:inherit;border-color:#d6b876;background:transparent}
 #teiTitleLines{margin:12px 0}
@@ -76,4 +85,4 @@
 <details id="teiTitleLines"><summary data-i18n="titleLines">Title lines</summary><p class="hint" data-i18n="titleLinesHint">Select the reference lines to export as TEI headings.</p><div id="titleLineOptions"></div></details>
 <p id="witnessExportIds" class="status-note"></p><p id="teiExportError" role="alert"></p>
 <div class="controls"><button type="button" class="btn btn-green" id="confirmTeiExport" data-i18n="downloadTei">Download TEI</button></div>
-</dialog><div id="alignmentToast" hidden><span aria-hidden="true">✓</span><strong id="alignmentToastMessage" role="status"></strong><button type="button" class="btn btn-outline" id="dismissAlignmentToast" data-i18n="close">Close</button></div><div id="modal"></div><script src="/export-support.js?v=20261118-export-alignment" defer></script><script src="/frontend.js?v=20261118-session-restore" defer></script></body></html>
+</dialog><div id="alignmentToast" hidden><span aria-hidden="true">✓</span><strong id="alignmentToastMessage" role="status"></strong><button type="button" class="btn btn-outline" id="dismissAlignmentToast" data-i18n="close">Close</button></div><div id="modal"></div><script src="/export-support.js?v=20261118-export-alignment" defer></script><script src="/frontend.js?v=20261118-witness-cards" defer></script></body></html>

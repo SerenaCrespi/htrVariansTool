@@ -126,7 +126,7 @@ async function loadFile(which,fileList){
   }
  }catch(e){rollback();alert(e.message)}
 }
-async function loadImages(which,fileList){if(!fileList)return;const selected=[...fileList];if(!selected.length){images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=[];delete projectImageFiles[which];for(const key of Object.keys(projectImageLinks))if(key.startsWith(which+':')){delete projectImageLinks[key];delete imageOverrides[key]}setImageStatus(which,null);if(witnessView==='focus'&&groups.length)render();return}const status=$(`imageCount${which}`);status.textContent=t('imageLoading');const checked=await Promise.all(selected.map(async file=>{const url=URL.createObjectURL(file);try{await decodeImage(url);return{ok:true,item:{file,url,name:file.name}}}catch(e){URL.revokeObjectURL(url);return{ok:false,name:file.name}}}));const good=checked.filter(x=>x.ok).map(x=>x.item),bad=checked.filter(x=>!x.ok).map(x=>x.name);images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=good;for(const key of Object.keys(imageOverrides))if(key.startsWith(which+':'))delete imageOverrides[key];for(const [key,name] of Object.entries(projectImageLinks)){if(key.startsWith(which+':')){const item=good.find(x=>x.name===name);if(item)imageOverrides[key]=item}}setImageStatus(which,{good:good.map(x=>x.name),bad});if(witnessView==='focus'&&groups.length)render()}
+async function loadImages(which,fileList){if(!fileList)return;const selected=[...fileList];if(!selected.length){images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=[];delete projectImageFiles[which];for(const key of Object.keys(projectImageLinks))if(key.startsWith(which+':')){delete projectImageLinks[key];delete imageOverrides[key]}setImageStatus(which,null);if(witnessView!=='pair'&&groups.length)render();return}const status=$(`imageCount${which}`);status.textContent=t('imageLoading');const checked=await Promise.all(selected.map(async file=>{const url=URL.createObjectURL(file);try{await decodeImage(url);return{ok:true,item:{file,url,name:file.name}}}catch(e){URL.revokeObjectURL(url);return{ok:false,name:file.name}}}));const good=checked.filter(x=>x.ok).map(x=>x.item),bad=checked.filter(x=>!x.ok).map(x=>x.name);images[which].forEach(x=>URL.revokeObjectURL(x.url));images[which]=good;for(const key of Object.keys(imageOverrides))if(key.startsWith(which+':'))delete imageOverrides[key];for(const [key,name] of Object.entries(projectImageLinks)){if(key.startsWith(which+':')){const item=good.find(x=>x.name===name);if(item)imageOverrides[key]=item}}setImageStatus(which,{good:good.map(x=>x.name),bad});if(witnessView!=='pair'&&groups.length)render()}
 function groupItems(arr,g,side){const key=side==='A'?'aItems':'bItems';return Array.isArray(g[key])?g[key]:arr.slice(g[side==='A'?'a0':'b0'],g[side==='A'?'a1':'b1'])}
 function groupText(arr,g,side){return groupItems(arr,g,side).map(x=>x.text).filter(Boolean).join(' ')}
 // Identify a comparison unit by its readings and source lines so review choices
@@ -284,6 +284,7 @@ function renderAutomaticSemanticStatus(){
  if(diagnostic.status==='applied'&&failures.length)el.textContent+=' '+failures.map(status=>t('automatic_'+status)).join(' ');
 }
 function render(){
+ witnessImageObserver?.disconnect();
  saveBrowserSession();
  renderAutomaticSemanticStatus();
  renderGenreEditor();
@@ -372,7 +373,7 @@ function witnessEntryReview(entry){
 function witnessReading(entry,showReference){
  const {id,index,left,right,review,diff}=entry,state=review[index]||{};
  const action=(method,label,classes)=>`<button type="button" class="btn ${classes}" onclick="reviewWitnessAction('${id}',${index},'${method}')">${t(label)}</button>`;
- return `<section class="multi-reading"><strong>${esc(names[id])}</strong>
+ return `<section class="multi-reading">
  ${showReference&&left.length?`<details><summary>${t('pairReference')}</summary><div class="textline">${renderText(diff.aa,index,review)}</div></details>`:''}
  <div class="textline">${right.length?renderText(diff.bb,index,review):`<em>${t('noPassage')}</em>`}<div class="status-note">${esc(refs(right))}</div></div>
  ${diff.diff.length?`<div class="controls">${diff.diff.map((variant,k)=>`<span class="variant-item"><b>${esc(variant.a)} → ${esc(variant.b)}</b>
@@ -386,20 +387,100 @@ function reviewWitnessAction(id,index,action,variant){
  else if(action==='adjust')adjustUnit(index);
  else setVariant(index,variant,action);
 }
-function distinctLineRefs(items){
- return [...new Map(items.flatMap(item=>item.refs||[])
-  .map(ref=>[VariansExport.sourceLineKey(ref),ref]).filter(([key])=>key)).values()];
+let witnessImageObserver;
+function witnessSourceLines(items,source){
+ const lines=new Map();
+ for(const item of items){
+  const keys=[...new Set((item.refs||[]).map(VariansExport.sourceLineKey).filter(Boolean))];
+  const refs=keys.map(key=>{
+   if(!lines.has(key)){
+    const ref=source.get(key)||item.refs.find(ref=>VariansExport.sourceLineKey(ref)===key);
+    lines.set(key,{ref,words:(ref.line_text||'').split(/\s+/).filter(Boolean),selected:new Set()});
+   }
+   return lines.get(key);
+  });
+  const words=refs.flatMap(line=>line.words.map((word,index)=>({line,index,word})));
+  const needle=item.text.replace(/\s+/g,''),matches=[];
+  if(!needle)continue;
+  for(let start=0;start<words.length;start++){
+   let value='';
+   for(let end=start;end<words.length;end++){
+    value+=words[end].word;
+    if(value===needle){matches.push(words.slice(start,end+1));break}
+    if(!needle.startsWith(value))break;
+   }
+  }
+  if(matches.length===1)for(const {line,index} of matches[0])line.selected.add(index);
+ }
+ return [...lines.values()];
 }
-async function renderFocusImages(target,row){
- const sources=[['A',row.reference],...Object.keys(pairResults).map(id=>[
-  id,row.entries.filter(entry=>entry.id===id).flatMap(entry=>entry.right)
- ])];
- const blocks=await Promise.all(sources.map(async([id,items])=>{
-  const lines=distinctLineRefs(items);
-  const cards=await Promise.all((lines.length?lines:[null]).map(ref=>sourceLineCard(id,ref,true)));
-  return cards.join('');
- }));
- if(target.isConnected)target.innerHTML=blocks.join('');
+function facsimileAreas({ref,words,selected}){
+ const box=value=>{
+  const parts=String(value||'').split(',');
+  if(parts.length!==4||parts.some(part=>!part.trim()))return null;
+  const [x,y,w,h]=parts.map(Number);
+  return [x,y,w,h].every(Number.isFinite)&&w>0&&h>0?[[x,y],[x+w,y],[x+w,y+h],[x,y+h]]:null;
+ };
+ if(!selected.size)return [];
+ if(selected.size===words.length){
+  const points=String(ref.polygon||'').trim().split(/[\s,]+/).map(Number);
+  if(points.length>=6&&points.length%2===0&&points.every(Number.isFinite))
+   return [Array.from({length:points.length/2},(_,n)=>points.slice(2*n,2*n+2))];
+  return [box(ref.coords)].filter(Boolean);
+ }
+ const boxes=ref.word_boxes||[];
+ const contextBoxes=new Set(words.flatMap((_,index)=>selected.has(index)?[]:[boxes[index]]));
+ return [...new Set([...selected].map(index=>boxes[index]))]
+  .filter(value=>!contextBoxes.has(value)).map(box).filter(Boolean);
+}
+async function witnessThumbnail(id,line){
+ const {ref,words,selected}=line,item=resolveWitnessImage(id,ref);
+ let crop;
+ if(item)try{crop=await cropLine(item.url,ref,facsimileAreas(line))}catch{}
+ const transcription=selected.size&&selected.size<words.length
+  ? `<p class="facsimile-transcription">${words.map((word,index)=>
+    selected.has(index)?`<mark class="facsimile-selected">${esc(word)}</mark>`:`<span class="facsimile-context">${esc(word)}</span>`
+   ).join(' ')}</p>`:'';
+ const thumbnail=crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:
+  item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref.page||'')}">`:
+   `<div class="status-note">${t('missingImage')}</div>`;
+ const preview=item?`<a href="${esc(item.url)}" target="_blank" rel="noopener" title="${t('fullPage')}">${thumbnail}</a>`:thumbnail;
+ return `<figure>${preview}${transcription}</figure>`;
+}
+function renderWitnessImages(rows,sources){
+ witnessImageObserver?.disconnect();
+ const pending=new Map();
+ for(const row of rows){
+  const board=$(`witness-unit-${row.index}`);
+  for(const target of board.querySelectorAll('[data-witness-facsimiles]')){
+   const id=target.dataset.witnessFacsimiles;
+   const items=id==='A'?row.reference:row.entries.filter(entry=>entry.id===id).flatMap(entry=>entry.right);
+   if(items.length){
+    target.textContent=t('loadingImages');
+    pending.set(target,{id,items});
+   }
+  }
+ }
+ async function load(target){
+  const {id,items}=pending.get(target);
+  pending.delete(target);
+  const lines=witnessSourceLines(items,sources[id]);
+  const thumbnails=await Promise.all(lines.map(line=>witnessThumbnail(id,line)));
+  if(target.isConnected)target.innerHTML=thumbnails.join('');
+ }
+ if(witnessView==='focus'){
+  for(const target of pending.keys())load(target);
+  return;
+ }
+ const observer=new IntersectionObserver(entries=>{
+  for(const entry of entries){
+   if(!entry.isIntersecting)continue;
+   observer.unobserve(entry.target);
+   if(pending.has(entry.target))load(entry.target);
+  }
+ },{rootMargin:'120px'});
+ witnessImageObserver=observer;
+ for(const target of pending.keys())observer.observe(target);
 }
 function renderWitnessComparison(){
  const all=witnessRows().map((row,index)=>({...row,index,entries:row.entries.map(witnessEntryReview)}));
@@ -413,19 +494,31 @@ function renderWitnessComparison(){
   $('results').innerHTML=`<div class="empty">${t('noFilterMatches')}</div>`;
   return;
  }
+ const ids=Object.keys(pairResults);
+ const sources=Object.fromEntries([['A',pairResults[ids[0]].A],...ids.map(id=>[id,pairResults[id].B])].map(([id,units])=>[
+  id,new Map(units.flatMap(unit=>unit.refs||[]).map(ref=>[VariansExport.sourceLineKey(ref),ref]))
+ ]));
+ const previousScroll=new Map([...$('results').querySelectorAll('.witness-scroll')].map(node=>[node.closest('article').id,node.scrollLeft]));
+ const card=(id,readings)=>`<section class="witness-card ${id==='A'?'witness-reference':''}" data-witness="${id}">
+ <h4>${esc(names[id])}</h4>${readings}<div class="witness-facsimiles" data-witness-facsimiles="${id}"></div></section>`;
  const text=row=>{
   const referenceText=row.reference.map(unit=>unit.text).join(' ');
-  const ids=Object.keys(pairResults);
-  return `<div><section class="multi-reading"><strong>${esc(names.A)}</strong><div class="textline">${esc(referenceText)||'—'}<div class="status-note">${esc(refs(row.reference))}</div></div></section>
+  const reference=card('A',`<div class="multi-reading"><div class="textline">${esc(referenceText)||'—'}<div class="status-note">${esc(refs(row.reference))}</div></div></div>`);
+  return `<div class="witness-board">${reference}<div class="witness-scroll" tabindex="0" role="region" aria-label="${esc(t('allViews'))}">
   ${ids.map(id=>{
    const readings=row.entries.filter(entry=>entry.id===id);
    const pairText=readings.flatMap(entry=>entry.left).map(item=>item.text).join(' ');
-   return readings.length?readings.map(entry=>witnessReading(entry,pairText!==referenceText)).join(''):
-    `<section class="multi-reading"><strong>${esc(names[id])}</strong><div class="textline"><em>${t('noPassage')}</em></div></section>`;
-  }).join('')}</div>`;
+   return card(id,readings.length?readings.map(entry=>witnessReading(entry,pairText!==referenceText)).join(''):
+    `<div class="multi-reading textline"><em>${t('noPassage')}</em></div>`);
+  }).join('')}</div></div>`;
+ };
+ const showImages=rows=>{
+  for(const node of $('results').querySelectorAll('.witness-scroll'))node.scrollLeft=previousScroll.get(node.closest('article').id)||0;
+  renderWitnessImages(rows,sources);
  };
  if(witnessView==='all'){
   $('results').innerHTML=visible.map(row=>`<article class="multi-row" id="witness-unit-${row.index}"><h3>${t('unitLabel',{n:row.index+1})}</h3>${text(row)}</article>`).join('');
+  showImages(visible);
   return;
  }
  let position=visible.findIndex(row=>row.index>=focusRow);
@@ -436,8 +529,8 @@ function renderWitnessComparison(){
  <nav class="focus-nav"><button type="button" class="btn btn-outline" aria-label="${t('previousLine')}" ${position===0?'disabled':''} data-direction="previous" onclick="jumpWitnessRow(${visible[position-1]?.index??0},this.dataset.direction)">←</button>
  <strong>${t('linePosition',{n:position+1,total:visible.length})}</strong>
  <button type="button" class="btn btn-outline" aria-label="${t('nextLine')}" ${position===visible.length-1?'disabled':''} data-direction="next" onclick="jumpWitnessRow(${visible[position+1]?.index??0},this.dataset.direction)">→</button></nav>
- <div class="focus-grid"><div><div id="focusEditor"></div>${text(row)}</div><aside class="focus-images"><h3>${t('facsimiles')}</h3><div id="focusImages">${t('loadingImages')}</div></aside></div></article>`;
- renderFocusImages($('focusImages'),row);
+ <div id="focusEditor"></div>${text(row)}</article>`;
+ showImages([row]);
 }
 function jumpWitnessRow(index,direction){
  focusRow=index;
@@ -469,7 +562,12 @@ function closeTextEditor(){
 function editUnit(i,inline=false){
  const g=groups[i],a=groupText(A,g,'A'),b=groupText(B,g,'B');
  const fields=`<div class="iiif-head"><span>${t('editUnit',{n:i+1})}</span><button class="btn btn-outline" onclick="closeTextEditor()">${t('close')}</button></div><p class="status-note">${t('editHint')}</p><label>${esc(names.A)}<textarea id="editA" class="form-control" rows="3">${esc(a)}</textarea></label><label>${esc(names[activeWitness])}<textarea id="editB" class="form-control" rows="3">${esc(b)}</textarea></label><div id="editError" class="status-note" role="alert"></div><button id="saveEditBtn" class="btn btn-green" onclick="saveEdit(${i})">${t('saveRecalc')}</button>`;
- if(inline)$('focusEditor').innerHTML=`<section class="text-editor">${fields}</section>`;
+ if(inline){
+  const editor=$('focusEditor');
+  editor.innerHTML=`<section class="text-editor">${fields}</section>`;
+  const card=$('results').querySelector(`[data-witness="${activeWitness}"]`);
+  card.insertBefore(editor,card.querySelector('.witness-facsimiles'));
+ }
  else $('modal').innerHTML=`<div class="iiif-modal"><div class="iiif-box text-editor" style="max-width:760px">${fields}</div></div>`;
 }
 async function saveEdit(i){
@@ -505,8 +603,21 @@ function similarityClient(a,b){const x=tokenKey(a).split('').join(' '),y=tokenKe
 function resolveImage(which,ref){return resolveWitnessImage(which==='B'?activeWitness:which,ref)}
 function resolveWitnessImage(id,ref){if(!ref)return null;const key=`${id}:${ref.alto_file||ref.page}`;if(imageOverrides[key])return imageOverrides[key];const stem=s=>String(s||'').split('/').pop().replace(/\.[^.]+$/,'').toLowerCase();const wanted=[stem(ref.image_file),stem(ref.alto_file),stem(ref.page)].filter(Boolean);let match=images[id].find(x=>wanted.some(w=>stem(x.name)===w||stem(x.name).includes(w)||w.includes(stem(x.name))));if(!match&&images[id].length===1)match=images[id][0];if(!match){const uri=$(`iiif${id}`).value.trim();if(uri)return {name:t('imageFallback'),url:uri}}return match||null}
 function chooseImage(which,ref){if(!ref)return null;const id=which==='B'?activeWitness:which;let found=resolveImage(which,ref);if(found)return found;if(!images[id].length)return null;let list=images[id].map((x,i)=>`${i+1}. ${x.name}`).join('\n');let n=Number(prompt(t('chooseImage',{page:ref?.page||'',w:names[id],list})));if(Number.isInteger(n)&&n>0&&n<=images[id].length){let item=images[id][n-1];imageOverrides[`${id}:${ref?.alto_file||ref?.page}`]=item;projectImageLinks[`${id}:${ref?.alto_file||ref?.page}`]=item.name;saveBrowserSession();return item}return null}
-async function cropLine(imageUrl,ref){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{try{const vals=String(ref.coords||'').split(',').map(Number);if(vals.length<4||vals.some(v=>!Number.isFinite(v))){resolve(null);return}let[x,y,w,h]=vals;const pw=Number(ref.page_width)||image.naturalWidth,ph=Number(ref.page_height)||image.naturalHeight,sx=image.naturalWidth/pw,sy=image.naturalHeight/ph;let left=x*sx,top=y*sy,width=w*sx,height=h*sy,padX=Math.max(12,height*.18),padY=Math.max(8,height*.24);left=Math.max(0,left-padX);top=Math.max(0,top-padY);width=Math.min(image.naturalWidth-left,width+padX*2);height=Math.min(image.naturalHeight-top,height+padY*2);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));canvas.getContext('2d').drawImage(image,left,top,width,height,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/png'))}catch(e){reject(e)}};image.onerror=()=>reject(Error('Immagine non leggibile'));image.src=imageUrl})}
-async function sourceLineCard(which,ref,automatic=false){const id=automatic?which:which==='B'?activeWitness:which,item=automatic?resolveWitnessImage(id,ref):chooseImage(which,ref);let crop=null;if(item&&ref)try{crop=await cropLine(item.url,ref)}catch(e){}const text=ref?.line_text||t('notAvailable');return `<figure class="source-line-card"><figcaption><b>${esc(names[id])}</b><span>${esc(ref?`${ref.alto_file||''} · ${t('page')} ${ref.page} · ${t('line')} ${ref.line}`:'')}</span></figcaption>${crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref?.page||'')}">`:`<div class="no-image">${t('missingImage')}</div>`}${item?`<details class="full-page-details"><summary>${t('fullPage')}</summary><img class="full-page" src="${esc(item.url)}" alt="${t('fullPage')} ${esc(ref?.page||'')}"></details>`:''}<div class="image-reading">${esc(text)}</div></figure>`}
+async function cropLine(imageUrl,ref,areas=[]){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{try{const vals=String(ref.coords||'').split(',').map(Number);if(vals.length<4||vals.some(v=>!Number.isFinite(v))){resolve(null);return}let[x,y,w,h]=vals;const pw=Number(ref.page_width)||image.naturalWidth,ph=Number(ref.page_height)||image.naturalHeight,sx=image.naturalWidth/pw,sy=image.naturalHeight/ph;let left=x*sx,top=y*sy,width=w*sx,height=h*sy,padX=Math.max(12,height*.18),padY=Math.max(8,height*.24);left=Math.max(0,left-padX);top=Math.max(0,top-padY);width=Math.min(image.naturalWidth-left,width+padX*2);height=Math.min(image.naturalHeight-top,height+padY*2);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));const context=canvas.getContext('2d');
+const draw=()=>context.drawImage(image,left,top,width,height,0,0,canvas.width,canvas.height);
+draw();
+if(areas.length){
+ context.fillStyle='rgba(60,49,45,.28)';context.fillRect(0,0,canvas.width,canvas.height);
+ context.beginPath();
+ for(const area of areas){
+  area.forEach(([px,py],index)=>context[index?'lineTo':'moveTo'](px*sx-left,py*sy-top));
+  context.closePath();
+ }
+ context.save();context.clip();draw();context.restore();
+ context.strokeStyle='#b98428';context.lineWidth=2;context.stroke();
+}
+resolve(canvas.toDataURL('image/png'))}catch(e){reject(e)}};image.onerror=()=>reject(Error('Immagine non leggibile'));image.src=imageUrl})}
+async function sourceLineCard(which,ref){const id=which==='B'?activeWitness:which,item=chooseImage(which,ref);let crop=null;if(item&&ref)try{crop=await cropLine(item.url,ref)}catch(e){}const text=ref?.line_text||t('notAvailable');return `<figure class="source-line-card"><figcaption><b>${esc(names[id])}</b><span>${esc(ref?`${ref.alto_file||''} · ${t('page')} ${ref.page} · ${t('line')} ${ref.line}`:'')}</span></figcaption>${crop?`<img class="line-crop" src="${crop}" alt="${t('line')} ${esc(ref.line)}">`:item?`<img class="page-fallback" src="${esc(item.url)}" alt="${t('page')} ${esc(ref?.page||'')}">`:`<div class="no-image">${t('missingImage')}</div>`}${item?`<details class="full-page-details"><summary>${t('fullPage')}</summary><img class="full-page" src="${esc(item.url)}" alt="${t('fullPage')} ${esc(ref?.page||'')}"></details>`:''}<div class="image-reading">${esc(text)}</div></figure>`}
 async function openImages(unitIndex){const g=groups[unitIndex],ra=groupItems(A,g,'A').flatMap(x=>x.refs||[]),rb=groupItems(B,g,'B').flatMap(x=>x.refs||[]);await renderImageCompare(t('lineCompare',{n:unitIndex+1}),ra,rb)}async function renderImageCompare(title,ra,rb){const modal=$('modal');modal.innerHTML=`<div class="iiif-modal"><div class="iiif-box image-compare"><div class="iiif-head"><span>${esc(title)}</span><button class="btn btn-outline" onclick="$('modal').innerHTML=''">${t('close')}</button></div><div class="line-compare"><section class="line-witness"><h3>${esc(names.A)} <small>${t('rows',{n:ra.length})}</small></h3><div id="lineA"></div></section><section class="line-witness"><h3>${esc(names[activeWitness])} <small>${t('rows',{n:rb.length})}</small></h3><div id="lineB"></div></section></div><p class="crop-note">${t('cropNote')}</p></div></div>`;const [cardsA,cardsB]=await Promise.all([Promise.all(ra.map(r=>sourceLineCard('A',r))),Promise.all(rb.map(r=>sourceLineCard('B',r)))]);if(!document.getElementById('lineA'))return;$('lineA').innerHTML=cardsA.join('')||`<div class="no-image">${t('noPassageIn',{w:'A'})}</div>`;$('lineB').innerHTML=cardsB.join('')||`<div class="no-image">${t('noPassageIn',{w:'B'})}</div>`}
 function currentReview(id){return id===activeWitness?{decisions,movementDecisions}:pairReviews[id]||{decisions:{},movementDecisions:{}}}
 function selectedVariantEdits(id){const pair=pairResults[id];if(!pair)return[];const state=currentReview(id).decisions||{},out=[];let offset=0;for(let gi=0;gi<pair.alignments.length;gi++){const g=pair.alignments[gi],left=groupText(pair.A,g,'A'),right=groupText(pair.B,g,'B'),d=compareUnit(left,right),selected=new Set(Object.entries(state[gi]||{}).filter(([,v])=>v==='keep').map(([k])=>Number(k)));for(const k of selected){const aPos=[];d.aa.forEach((x,pos)=>{if(x.c==='var'&&x.v===k)aPos.push(pos)});const bTokens=d.bb.filter(x=>x.c==='var'&&x.v===k).map(x=>x.t);let start=aPos.length?aPos[0]:d.aa.findIndex(x=>x.c==='var'&&x.v>k);if(start<0)start=d.aa.length;const end=aPos.length?aPos[aPos.length-1]+1:start;out.push({id,a0:offset+start,a1:offset+end,tokens:bTokens,group:gi,variant:k})}offset+=left.split(/\s+/).filter(Boolean).length}return out}
