@@ -234,7 +234,7 @@ def _word_stream(lines: list[dict]) -> list[dict]:
     return merged
 
 
-def _word_edit_ops(a: list[dict], b: list[dict], spacing=True) -> list[tuple[str, int | None, int | None]]:
+def _word_edit_ops(a: list[dict], b: list[dict]) -> list[tuple[str, int | None, int | None]]:
     """Anchor exact word runs, then use weighted word-level Levenshtein in gaps."""
     ak = [word["key"] for word in a]
     bk = [word["key"] for word in b]
@@ -308,8 +308,8 @@ def _word_edit_ops(a: list[dict], b: list[dict], spacing=True) -> list[tuple[str
             ops.extend(("delete", i, None) for i in range(a0, a1))
             ops.extend(("insert", None, j) for j in range(b0, b1))
             return
-        left_spans = joined_spans(a, a0, a1) if spacing and not unbalanced_edge else []
-        right_spans = joined_spans(b, b0, b1) if spacing and not unbalanced_edge else []
+        left_spans = joined_spans(a, a0, a1) if not unbalanced_edge else []
+        right_spans = joined_spans(b, b0, b1) if not unbalanced_edge else []
         dp = [[0.0] * (m + 1) for _ in range(n + 1)]
         back = [[""] * (m + 1) for _ in range(n + 1)]
         for i in range(1, n + 1):
@@ -392,78 +392,10 @@ def _word_items(words: list[dict]) -> list[dict]:
     return items
 
 
-def _recover_displaced_word_runs(a: list[dict], b: list[dict], ops: list[tuple[str, int | None, int | None]]):
-    """Pair high-confidence unmatched word runs globally, independent of ALTO lines.
-
-    ALTO line boundaries are intentionally absent here: each witness has
-    already been flattened by ``_word_stream``. A displaced passage can
-    therefore span several physical lines in either witness and still be
-    compared as one continuous run.
-    """
-    a_runs, b_runs = [], []
-    for operation, side in (("delete", a_runs), ("insert", b_runs)):
-        start = None
-        previous = None
-        for op_index, (kind, ai, bi) in enumerate(ops + [("end", None, None)]):
-            index = ai if operation == "delete" else bi
-            if kind == operation and index is not None and (previous is None or index == previous + 1):
-                if start is None:
-                    start = op_index
-                previous = index
-                continue
-            if start is not None:
-                indexes = [ops[k][1 if operation == "delete" else 2] for k in range(start, op_index)]
-                side.append((start, op_index, indexes))
-                start = previous = None
-            if kind == operation and index is not None:
-                start = op_index
-                previous = index
-
-    candidates = []
-    for arun in a_runs:
-        a_indices = arun[2]
-        if len(a_indices) < 2:
-            continue
-        left = " ".join(a[i]["text"] for i in a_indices)
-        for brun in b_runs:
-            b_indices = brun[2]
-            if len(b_indices) < 2 or abs(len(a_indices) - len(b_indices)) > 2:
-                continue
-            right = " ".join(b[j]["text"] for j in b_indices)
-            score = similarity(left, right)
-            if score >= 0.78:
-                candidates.append((score, arun, brun))
-
-    used_a, used_b, pairing = set(), set(), {}
-    for score, arun, brun in sorted(candidates, key=lambda item: (item[0], min(len(item[1][2]), len(item[2][2]))), reverse=True):
-        a_indices, b_indices = arun[2], brun[2]
-        if any(i in used_a for i in a_indices) or any(j in used_b for j in b_indices):
-            continue
-        # Align the two run interiors with the same weighted word edit logic;
-        # only retain actual diagonal correspondences.
-        local_ops = _word_edit_ops([a[i] for i in a_indices], [b[j] for j in b_indices], spacing=False)
-        for kind, li, ri in local_ops:
-            if kind == "pair" and li is not None and ri is not None:
-                pairing[a_indices[li]] = b_indices[ri]
-                used_a.add(a_indices[li]); used_b.add(b_indices[ri])
-
-    recovered = []
-    consumed_b = set(pairing.values())
-    for kind, ai, bi in ops:
-        if kind == "delete" and ai in pairing:
-            target = pairing[ai]
-            recovered.append(("pair", ai, target))
-        elif kind == "insert" and bi in consumed_b:
-            continue
-        else:
-            recovered.append((kind, ai, bi))
-    return recovered
-
-
 def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
     """Align continuous word streams, then project correspondences onto A lines."""
     a, b = _word_stream(a_lines), _word_stream(b_lines)
-    ops = _recover_displaced_word_runs(a, b, _word_edit_ops(a, b))
+    ops = _word_edit_ops(a, b)
     # Corresponding words are projected onto reference-line segments. Every
     # unmatched run in B becomes its own row, split at physical ALTO line
     # boundaries, so additions retain their source layout.
@@ -570,38 +502,6 @@ def align_alto_words(a_lines: list[dict], b_lines: list[dict]) -> list[dict]:
         compact_rows.append(row)
         row_index += 1
     rows = compact_rows
-
-    # Monotonic sequence alignment cannot pair a passage that has moved across
-    # other material. Recover strong matches between otherwise unmatched
-    # reference and comparison rows globally before assigning public IDs.
-    # The row stays at the reference position and keeps both witnesses' ALTO
-    # pointers, so its identity is independent of the physical line number.
-    reference_only = [row for row in rows if row["aItems"] and not row["bWords"]]
-    comparison_only = [row for row in rows if row["bWords"] and not row["aItems"]]
-    candidates = []
-    for left in reference_only:
-        left_text = " ".join(word["key"] for word in left["aItems"])
-        left_tokens = normalize(left_text)
-        if len(left_tokens) < 2:
-            continue
-        for right in comparison_only:
-            right_text = " ".join(word["key"] for word in right["bWords"])
-            right_tokens = normalize(right_text)
-            if len(right_tokens) < 2:
-                continue
-            score = similarity(left_text, right_text)
-            # Require a high lexical match and enough shared content to avoid
-            # collapsing unrelated short headings or common formulae.
-            if score >= 0.78 and min(len(left_tokens), len(right_tokens)) >= 2:
-                candidates.append((score, left, right))
-    used_left, used_right = set(), set()
-    for score, left, right in sorted(candidates, key=lambda item: item[0], reverse=True):
-        if id(left) in used_left or id(right) in used_right:
-            continue
-        left["bWords"] = right["bWords"]
-        left["similarity"] = score
-        used_left.add(id(left)); used_right.add(id(right))
-    rows = [row for row in rows if id(row) not in used_right]
 
     result = []
     for row in rows:
@@ -919,7 +819,7 @@ def align_witness_inputs(a: list[dict], b: list[dict], progress=None):
         print(f"[align] Global word alignment failed; using line-level backup: {exc}")
         alignments = []
     if alignments:
-        alignment_method = "word-level Levenshtein with global displaced-run recovery"
+        alignment_method = "word-level Levenshtein in ALTO order"
     else:
         groups = _align_dp(a, b)
         alignments = _alignment_groups_as_rows(groups, a, b)

@@ -117,5 +117,16 @@ class ALTOTests(unittest.TestCase):
                 self.assertEqual(rows[0]['bItems'][0]['text'], right)
 
 
+    def test_displaced_passage_remains_in_each_witness_source_order(self):
+        left = ['in principio del racconto', 'la lunga lezione spostata',
+                'il cavaliere cammina nel bosco', 'qui termina la storia']
+        right = [left[0], left[2], left[1], left[3]]
+        a = [unit for i, text in enumerate(left) for unit in parse_alto(alto('a', str(i), text), 'a.xml')]
+        b = [unit for i, text in enumerate(right) for unit in parse_alto(alto('b', str(i), text), 'b.xml')]
+        rows = align_alto_words(a, b)
+        for side, source in [('aItems', left), ('bItems', right)]:
+            self.assertEqual(' '.join(item['text'] for row in rows for item in row[side]), ' '.join(source))
+
+
 if __name__=='__main__':
     unittest.main()

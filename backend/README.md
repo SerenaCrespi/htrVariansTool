@@ -19,7 +19,7 @@ provenienza salvati.
 ## Altri componenti
 
 - `alto_support.py` risolve i riferimenti a tag ALTO e trova gli antenati XML delle righe.
-- `relocations.py` cerca possibili passi spostati fuori dall’ordine monotono. Questa è una funzione separata e consultiva; al momento si basa ancora sui gruppi di righe del vecchio allineamento.
+- `relocations.py` propone possibili passi spostati a partire dai gruppi di righe. I suggerimenti restano separati dall’allineamento parola per parola, che segue l’ordine di ciascun testimone.
 - `Handler` in `app.py` riceve la richiesta locale `/api/align`, restituisce testi, gruppi, metodo e suggerimenti di spostamento. Il browser invia una coppia per volta: testimone di riferimento e testimone confrontato.
 
 ## Limiti della prima versione parola per parola

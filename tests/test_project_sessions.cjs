@@ -671,3 +671,25 @@ print(json.dumps({'witnesses': {'A': a, 'B': b}, 'alignments': app.align_alto_wo
 
  }finally{await page.close()}
 });
+
+test('multi-witness grouping keeps an addition between its neighboring ALTO readings',async()=>{
+ const page=await browser.newPage();
+ try{
+  await page.goto(url);
+  const makeUnit=(text,line)=>({text,refs:[{alto_file:'page.xml',page:'p',line,line_text:text}]});
+  const a=[makeUnit('prima riga','a1'),makeUnit('seconda riga','a2')];
+  const b=[makeUnit('prima riga','b1'),makeUnit('aggiunta intermedia','b2'),makeUnit('seconda riga','b3')];
+  await page.evaluate(({a,b})=>{
+   addWitness();addWitness();
+   const row=(aItems,bItems,a0,a1)=>({a0,a1,b0:0,b1:0,aItems,bItems,similarity:1});
+   const pair=(B,alignments)=>({A:a,B,alignments,possible_transpositions:[],frequent_ambiguous_cases:[],alignment_method:'word-level Levenshtein'});
+   pairResults.B=pair(b,[row([a[0]],[b[0]],0,1),row([],[b[1]],1,1),row([a[1]],[b[2]],1,2)]);
+   pairResults.C=pair(a,[row(a,a,0,2)]);
+   activatePair('B',false);
+   setWitnessView('all');
+  },{a,b});
+  const readings=page.locator('.witness-card[data-witness="B"] .multi-reading > .textline:not(.segment-reference)');
+  assert.deepEqual(await readings.allTextContents(),['prima riga','aggiunta intermedia','seconda riga']);
+  assert.equal(await page.locator('.multi-row').count(),1);
+ }finally{await page.close()}
+});

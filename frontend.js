@@ -55,9 +55,9 @@ Object.assign(messages.it,{editResetWarning:"Salvare questa correzione azzererà
 
 
 
-Object.assign(messages.en,{"alignWord": "Alignment: word-level Levenshtein with displaced-run recovery.", "alignFallback": "Alignment: lexical backup."});
-Object.assign(messages.fr,{"alignWord": "Alignement : Levenshtein mot à mot avec récupération des passages déplacés.", "alignFallback": "Alignement : solution lexicale de secours."});
-Object.assign(messages.it,{"alignWord": "Allineamento: Levenshtein parola per parola con recupero dei passi spostati.", "alignFallback": "Allineamento: riserva lessicale."});
+Object.assign(messages.en,{"alignWord": "Alignment: word-level Levenshtein in ALTO order.", "alignFallback": "Alignment: lexical backup."});
+Object.assign(messages.fr,{"alignWord": "Alignement : Levenshtein mot à mot dans l’ordre ALTO.", "alignFallback": "Alignement : solution lexicale de secours."});
+Object.assign(messages.it,{"alignWord": "Allineamento: Levenshtein parola per parola nell’ordine ALTO.", "alignFallback": "Allineamento: riserva lessicale."});
 
 Object.assign(messages.en,{replaceWitnessWarning:"Replacing the ALTO files for this witness will recalculate only its comparison and clear its review decisions. Other witness comparisons will be preserved. Continue?"});
 Object.assign(messages.fr,{replaceWitnessWarning:"Remplacer les fichiers ALTO de ce témoin recalculera uniquement sa comparaison et effacera ses décisions. Les autres comparaisons seront conservées. Continuer ?"});
@@ -302,7 +302,7 @@ function renderWitnessInputs(){const savedIIIF=Object.fromEntries(witnessIds.map
 
 function addWitness(){if(witnessIds.length>=10)return;const id=String.fromCharCode(65+witnessIds.length);witnessIds.push(id);rawByWitness[id]=[];names[id]=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+(witnessIds.length-1);images[id]=[];imageStatus[id]=null;renderWitnessInputs();renderComparisonControl();saveBrowserSession()}
 function renderComparisonControl(){const control=$('comparisonControl'),select=$('compareWitness');if(!control||!select)return;const ids=Object.keys(pairResults);control.hidden=!ids.length||witnessView!=='pair';if(!ids.length)return;select.innerHTML=ids.map(id=>`<option value="${id}">${esc(names[id])}</option>`).join('');select.value=pairResults[activeWitness]?activeWitness:ids[0];select.onchange=()=>activatePair(select.value)}
-function activatePair(id,saveCurrent=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid:')||p.alignment_method.includes('bertalign +')?'alignSaved':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){render();renderMovements();$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
+function activatePair(id,saveCurrent=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid:')||p.alignment_method.includes('bertalign +')||p.alignment_method.includes('global displaced-run recovery')?'alignSaved':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){render();renderMovements();$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
 function render(){
  witnessImageObserver?.disconnect();
  saveBrowserSession();
@@ -397,10 +397,10 @@ function witnessRows(includeInteriorInsertions=false){
  });
  for(const entry of entries)rows.get(root(entry.anchor)).entries.push(entry);
  const order=(a,b)=>a.id.localeCompare(b.id)||a.index-b.index;
- // Keep additions between two fragments of the same reference line in reading order.
+ // Keep interior additions in order even when another witness joins reference lines.
  const separateInsertions=insertions.filter(row=>{
   const entry=row.entries[0],previous=previousAnchors.get(entry);
-  if(previous!==row.anchor||entry.group.lexical_review)return true;
+  if(previous===undefined||row.anchor>=reference.length||root(previous)!==root(row.anchor))return true;
   rows.get(root(previous)).entries.push(entry);
   return false;
  });
