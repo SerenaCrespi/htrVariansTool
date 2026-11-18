@@ -487,7 +487,23 @@ test('all witnesses and line-by-line share pair decisions and use each witness f
   await overlay.waitFor();
   assert.equal(await overlay.getAttribute('viewBox'),'0 0 1000 1000');
   assert.equal(await overlay.locator('polygon').getAttribute('points'),'10,0 510,0 510,20 10,20');
-  assert.equal(await overlay.locator('polygon').evaluate(node=>getComputedStyle(node).stroke),'rgb(203, 21, 44)');
+  assert.equal(await overlay.locator('feFlood').getAttribute('flood-color'),'#cb152c');
+  assert.deepEqual(await overlay.locator('feMorphology').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('radius'))),['3','5']);
+  const pixels=await overlay.evaluate(async node=>{
+   const svg=node.cloneNode(true);
+   svg.setAttribute('width','1000');
+   svg.setAttribute('height','1000');
+   const image=new Image();
+   image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(svg));
+   await image.decode();
+   const canvas=document.createElement('canvas');
+   canvas.width=canvas.height=1000;
+   const context=canvas.getContext('2d');
+   context.drawImage(image,0,0);
+   return [6,10].map(x=>Array.from(context.getImageData(x,10,1,1).data));
+  });
+  assert.ok(pixels[0][0]>=195&&pixels[0][1]<35&&pixels[0][2]<60&&pixels[0][3]===255);
+  assert.deepEqual(pixels[1],[0,0,0,0]);
   assert.deepEqual(await page.evaluate(()=>altoLineOutline({polygon:'2 3 5 3 4 6',coords:'1,1,8,8'})),[[2,3],[5,3],[4,6]]);
   await page.locator('#closeFacsimile').click();
   await page.getByRole('button',{name:'Next line',exact:true}).click();

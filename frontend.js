@@ -477,11 +477,27 @@ function altoLineOutline(ref){
   return Array.from({length:points.length/2},(_,n)=>points.slice(2*n,2*n+2));
  return altoRectangle(ref?.coords);
 }
+let fullPageOutlineId=0;
+function expandedPageOutline(points){
+ const xs=points.map(([x])=>x),ys=points.map(([,y])=>y);
+ const x=Math.min(...xs),y=Math.min(...ys),width=Math.max(...xs)-x,height=Math.max(...ys)-y;
+ const padding=Math.max(3,Math.min(24,Math.ceil(height*.12)));
+ const thickness=Math.max(2,Math.ceil(padding*.3));
+ const margin=padding+thickness+1;
+ const id=`expanded-alto-line-${++fullPageOutlineId}`;
+ return `<defs><filter id="${id}" filterUnits="userSpaceOnUse" x="${x-margin}" y="${y-margin}" width="${width+2*margin}" height="${height+2*margin}" primitiveUnits="userSpaceOnUse">
+ <feMorphology in="SourceAlpha" operator="dilate" radius="${padding}" result="inside"/>
+ <feMorphology in="SourceAlpha" operator="dilate" radius="${padding+thickness}" result="outside"/>
+ <feComposite in="outside" in2="inside" operator="out" result="ring"/>
+ <feFlood flood-color="#cb152c" result="red"/>
+ <feComposite in="red" in2="ring" operator="in"/>
+ </filter></defs><polygon points="${points.map(point=>point.join(',')).join(' ')}" filter="url(#${id})"></polygon>`;
+}
 function pageWithOutline(url,ref,refs=[ref]){
  const outlines=refs.map(altoLineOutline).filter(Boolean),title=`${t('fullPage')} ${ref?.page||''} · ${t('line')} ${ref?.line||''}`;
  const width=Number(ref?.page_width)||0,height=Number(ref?.page_height)||0;
  return `<span class="outlined-page"><img class="full-page" src="${esc(url)}" alt="${esc(title)}">${outlines.length?
-  `<svg aria-hidden="true" preserveAspectRatio="none" data-page-width="${width}" data-page-height="${height}" ${width>0&&height>0?`viewBox="0 0 ${width} ${height}"`:'hidden'}>${outlines.map(outline=>`<polygon points="${outline.map(point=>point.join(',')).join(' ')}"></polygon>`).join('')}</svg>`:''}</span>`;
+  `<svg aria-hidden="true" preserveAspectRatio="none" data-page-width="${width}" data-page-height="${height}" ${width>0&&height>0?`viewBox="0 0 ${width} ${height}"`:'hidden'}>${outlines.map(expandedPageOutline).join('')}</svg>`:''}</span>`;
 }
 function facsimileAreas({ref,words,selected}){
  if(!selected.size)return [];
