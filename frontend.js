@@ -298,9 +298,61 @@ async function runAlign(useEdited=false,onlyWitnesses=null){
 function refs(arr){if(!arr.length)return '—';return arr.flatMap(x=>x.refs||[]).map(r=>`${r.alto_file||''} · ${r.page} · ${r.line}`).join(' / ')}
 function renderText(tokens,unit,review=decisions){return tokens.map(token=>{if(token.c==='same')return `<span>${esc(token.t)}</span>`;let status=review[unit]?.[token.v]||'';let cls=status==='keep'?'keep':status==='ignore'?'ignore':'var';return `<span class="token ${cls}" title="${t('difference',{n:token.v+1})}">${esc(token.t)}</span>`}).join(' ')}
 
-function renderWitnessInputs(){const savedIIIF=Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||'']));const container=$('additionalWitnesses'),imageRows=$('additionalImageRows'),iiifRows=$('additionalIIIFRows');if(!container)return;container.innerHTML='';if(imageRows)imageRows.innerHTML='';if(iiifRows)iiifRows.innerHTML='';witnessIds.slice(1).forEach((id,index)=>{const number=index+1,label=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+number,imageLabel=(language==='fr'?'Images ':language==='it'?'Immagini ':'Images ')+number,iiifLabel=(language==='fr'?'URI IIIF ':language==='it'?'URI IIIF ':'IIIF URI ')+number;container.insertAdjacentHTML('beforeend',`<div class="witness-import-row"><div class="file-row"><label for="file${id}">${label}</label><input id="file${id}" type="file" multiple accept=".xml,.alto,text/xml" aria-label="${label} ALTO files"></div><div class="file-row"><label class="witness-name-label" for="dossierName${id}">${t('witnessName')}</label><input id="dossierName${id}" class="form-control" type="text" placeholder="e.g. BNCF II.IV.232" value="${esc(names[id]||'')}"></div></div>`);if(imageRows)imageRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="images${id}">${imageLabel}</label><input id="images${id}" type="file" multiple accept="image/*" aria-label="${imageLabel}"><span class="status-note" id="imageCount${id}">${t('none')}</span></div>`);if(iiifRows)iiifRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="iiif${id}">${iiifLabel}</label><input class="form-control" id="iiif${id}" type="url" placeholder="${t('optionalFallback')}"></div>`);if($(`iiif${id}`))$(`iiif${id}`).value=savedIIIF[id]||'';const fileInput=$(`file${id}`),nameInput=$(`dossierName${id}`),imageInput=$(`images${id}`);if(fileInput)fileInput.onchange=e=>loadFile(id,e.target.files);if(nameInput)nameInput.onchange=e=>{e.target.dataset.userEdited='true';names[id]=e.target.value.trim()||names[id];saveBrowserSession();if(groups.length){render();renderMovements()}};if(imageInput)imageInput.onchange=e=>loadImages(id,e.target.files);images[id]=images[id]||[];imageStatus[id]=imageStatus[id]||null;if(imageStatus[id])setImageStatus(id,imageStatus[id])});const lab=$('dossierNameA');if(lab&&rawByWitness.A?.length)lab.value=names.A||'';const add=$('addWitnessBtn');if(add){add.disabled=witnessIds.length>=10;add.title=add.disabled?t('witnessLimit'):''}const count=$('witnessLimit');if(count)count.textContent=add?.disabled?t('witnessLimit'):t('witnessCount',{n:witnessIds.length});}
+Object.assign(messages.en,{removeWitness:'Remove witness',removeReference:'Remove reference',confirmRemoveWitness:'Remove “{name}” and its alignment from this project?',confirmRemoveReference:'Remove the reference and its comparisons? The other witnesses and their files will stay in the project.'});
+Object.assign(messages.fr,{removeWitness:'Retirer le témoin',removeReference:'Retirer la référence',confirmRemoveWitness:'Retirer « {name} » et son alignement de ce projet ?',confirmRemoveReference:'Retirer la référence et ses comparaisons ? Les autres témoins et leurs fichiers resteront dans le projet.'});
+Object.assign(messages.it,{removeWitness:'Rimuovi testimone',removeReference:'Rimuovi riferimento',confirmRemoveWitness:'Rimuovere «{name}» e il relativo allineamento dal progetto?',confirmRemoveReference:'Rimuovere il riferimento e i relativi confronti? Gli altri testimoni e i loro file resteranno nel progetto.'});
+const WITNESS_IDS='ABCDEFGHIJ';
+function renderWitnessInputs(){const savedIIIF=Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||'']));const retainedInputs=new Map(witnessIds.slice(1).map(id=>[id,{
+ alto:$('file'+id)?.files,images:$('images'+id)?.files,userEdited:$('dossierName'+id)?.dataset.userEdited
+}]));const container=$('additionalWitnesses'),imageRows=$('additionalImageRows'),iiifRows=$('additionalIIIFRows');if(!container)return;container.innerHTML='';if(imageRows)imageRows.innerHTML='';if(iiifRows)iiifRows.innerHTML='';witnessIds.slice(1).forEach((id,index)=>{const number=index+1,label=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+number,imageLabel=(language==='fr'?'Images ':language==='it'?'Immagini ':'Images ')+number,iiifLabel=(language==='fr'?'URI IIIF ':language==='it'?'URI IIIF ':'IIIF URI ')+number;container.insertAdjacentHTML('beforeend',`<div class="witness-import-row"><div class="file-row"><label for="file${id}">${label}</label><input id="file${id}" type="file" multiple accept=".xml,.alto,text/xml" aria-label="${label} ALTO files"></div><div class="file-row"><label class="witness-name-label" for="dossierName${id}">${t('witnessName')}</label><input id="dossierName${id}" class="form-control" type="text" placeholder="e.g. BNCF II.IV.232" value="${esc(names[id]||'')}"><button type="button" class="btn btn-outline remove-witness" data-remove-witness="${id}">${t('removeWitness')}</button></div></div>`);if(imageRows)imageRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="images${id}">${imageLabel}</label><input id="images${id}" type="file" multiple accept="image/*" aria-label="${imageLabel}"><span class="status-note" id="imageCount${id}">${t('none')}</span></div>`);if(iiifRows)iiifRows.insertAdjacentHTML('beforeend',`<div class="file-row"><label for="iiif${id}">${iiifLabel}</label><input class="form-control" id="iiif${id}" type="url" placeholder="${t('optionalFallback')}"></div>`);if($(`iiif${id}`))$(`iiif${id}`).value=savedIIIF[id]||'';const fileInput=$(`file${id}`),nameInput=$(`dossierName${id}`),imageInput=$(`images${id}`);const previous=retainedInputs.get(id);if(previous.alto?.length&&fileInput)fileInput.files=previous.alto;if(previous.images?.length&&imageInput)imageInput.files=previous.images;if(previous.userEdited&&nameInput)nameInput.dataset.userEdited=previous.userEdited;if(fileInput)fileInput.onchange=e=>loadFile(id,e.target.files);if(nameInput)nameInput.onchange=e=>{e.target.dataset.userEdited='true';names[id]=e.target.value.trim()||names[id];saveBrowserSession();if(groups.length){render();renderMovements()}};if(imageInput)imageInput.onchange=e=>loadImages(id,e.target.files);images[id]=images[id]||[];imageStatus[id]=imageStatus[id]||null;if(imageStatus[id])setImageStatus(id,imageStatus[id])});$('removeReference').hidden=!rawByWitness.A?.length&&!images.A.length;const lab=$('dossierNameA');if(lab&&rawByWitness.A?.length)lab.value=names.A||'';const add=$('addWitnessBtn');if(add){add.disabled=witnessIds.length>=10;add.title=add.disabled?t('witnessLimit'):''}const count=$('witnessLimit');if(count)count.textContent=add?.disabled?t('witnessLimit'):t('witnessCount',{n:witnessIds.length});}
 
-function addWitness(){if(witnessIds.length>=10)return;const id=String.fromCharCode(65+witnessIds.length);witnessIds.push(id);rawByWitness[id]=[];names[id]=(language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ')+(witnessIds.length-1);images[id]=[];imageStatus[id]=null;renderWitnessInputs();renderComparisonControl();saveBrowserSession()}
+function addWitness(){if(witnessIds.length>=10)return;const id=[...WITNESS_IDS].find(candidate=>!witnessIds.includes(candidate));witnessIds.push(id);rawByWitness[id]=[];const prefix=language==='fr'?'Témoin ':language==='it'?'Testimone ':'Witness ';let number=witnessIds.length-1;while(Object.values(names).includes(prefix+number))number++;names[id]=prefix+number;images[id]=[];imageStatus[id]=null;renderWitnessInputs();renderComparisonControl();saveBrowserSession()}
+function removeWitness(id){
+ if(!witnessIds.includes(id)||pendingProjectOperations)return;
+ const reference=id==='A',first=Object.keys(pairResults)[0];
+ if(reference&&first&&!confirm(t('confirmRemoveReference')))return;
+ if(!reference&&pairResults[id]&&!confirm(t('confirmRemoveWitness',{name:names[id]})))return;
+ if(pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};
+
+ for(const image of images[id]||[])URL.revokeObjectURL(image.url);
+ for(const mapping of [imageOverrides,projectImageLinks]){
+  for(const key of Object.keys(mapping))if(key.startsWith(id+':'))delete mapping[key];
+ }
+ delete projectImageFiles[id];
+ delete imageStatus[id];
+ if(reference){
+  rawA=rawByWitness.A=[];images.A=[];
+  names.A=t('referenceWitness');
+  for(const key of ['fileA','imagesA','dossierNameA','iiifA'])$(key).value='';
+  delete $('dossierNameA').dataset.userEdited;
+  titleLines.clear();
+  pairResults={};pairReviews={};
+ }else{
+  witnessIds=witnessIds.filter(witness=>witness!==id);
+  delete pairResults[id];delete pairReviews[id];delete rawByWitness[id];
+  delete names[id];delete images[id];
+ }
+ const next=Object.keys(pairResults)[0];
+ if(first!==next)genreRanges=[];
+ if($('teiExportDialog').open)$('teiExportDialog').close();
+ teiExportDraft=null;alignmentDraft=null;editedMode=false;focusRow=0;
+ $('modal').innerHTML='';$('recurringText').textContent='';
+ renderWitnessInputs();
+ if(reference)setImageStatus('A',null);
+ if(next){
+  activatePair(pairResults[activeWitness]?activeWitness:next,false);
+  $('alignSummary').textContent=t('alignmentSummary',{n:groups.length});
+ }else{
+  activeWitness='B';A=[];B=[];groups=[];decisions={};movementCandidates=[];movementDecisions={};ambiguousCases=[];alignmentMethod='';
+  renderComparisonControl();
+  $('loadedStatus').textContent=t('noCorpus');
+  $('alignSummary').textContent='';
+  $('totalBadge').textContent=t('unitCount',{n:0,total:0});
+  $('pendingBadge').textContent=t('pending',{n:0,total:0});
+  $('keptBadge').textContent=t('retained',{n:0});
+ }
+ render();renderMovements();saveBrowserSession(true);
+}
 function renderComparisonControl(){const control=$('comparisonControl'),select=$('compareWitness');if(!control||!select)return;const ids=Object.keys(pairResults);control.hidden=!ids.length||witnessView!=='pair';if(!ids.length)return;select.innerHTML=ids.map(id=>`<option value="${id}">${esc(names[id])}</option>`).join('');select.value=pairResults[activeWitness]?activeWitness:ids[0];select.onchange=()=>activatePair(select.value)}
 function activatePair(id,saveCurrent=true){if(!pairResults[id])return;if(saveCurrent&&pairResults[activeWitness])pairReviews[activeWitness]={decisions,movementDecisions};const p=pairResults[id];activeWitness=id;A=p.A;B=p.B;groups=p.alignments;movementCandidates=p.possible_transpositions;ambiguousCases=p.frequent_ambiguous_cases;alignmentMethod=p.alignment_method.startsWith('hybrid:')||p.alignment_method.includes('bertalign +')||p.alignment_method.includes('global displaced-run recovery')?'alignSaved':p.alignment_method.startsWith('word-level')?'alignWord':'alignFallback';decisions=pairReviews[id]?.decisions||{};movementDecisions=pairReviews[id]?.movementDecisions||{};renderComparisonControl();if(groups.length){render();renderMovements();$('loadedStatus').textContent=t('backendUnits',{a:A.length,b:B.length,w:names[id]||''})+` · ${t(alignmentMethod)}`}}
 function render(facsimiles){
@@ -964,7 +1016,7 @@ function validateProject(project){
  const inspect=x=>{if(x&&typeof x==='object')for(const key of Object.keys(x)){if(['__proto__','constructor','prototype'].includes(key))fail();inspect(x[key])}};
  inspect(project);
  const s=project.state,ids=s.witnessIds;
- if(!strings(ids)||!ids.length||ids.length>10||ids.some((id,i)=>id!==String.fromCharCode(65+i)))fail();
+ if(!strings(ids)||!ids.length||ids.length>10||ids[0]!=='A'||new Set(ids).size!==ids.length||ids.some(id=>!(/^[A-J]$/).test(id)))fail();
  for(const key of ['names','rawByWitness','pairResults','pairReviews','iiif','imageFiles','imageLinks'])if(!obj(s[key]))fail();
  if(!['en','fr','it'].includes(s.language)||!['all','variants','pending','uncertain'].includes(s.viewFilter)||!['prose','poetry','drama'].includes(s.genre)||typeof s.editedMode!=='boolean')fail();
  if(s.genreRanges!==undefined&&(!Array.isArray(s.genreRanges)||!s.genreRanges.every(r=>obj(r)&&Number.isInteger(r.start)&&Number.isInteger(r.end)&&['prose','poetry','drama'].includes(r.genre))))fail();
@@ -1067,7 +1119,8 @@ async function restoreBrowserSession(){
   }
   const view=JSON.parse(sessionStorage.getItem('varians-session-view')||'null')||saved.view;
   if(Number.isSafeInteger(view?.focusRow)&&view.focusRow>=0)focusRow=view.focusRow;
-  if(['pair','all','focus'].includes(view?.witnessView))setWitnessView(view.witnessView);
+  $('removeReference').hidden=!rawByWitness.A?.length&&!images.A.length;
+ if(['pair','all','focus'].includes(view?.witnessView))setWitnessView(view.witnessView);
   $('projectStatus').textContent='';
   $('sessionStatus').textContent=t('sessionRestored');
  }catch(error){
@@ -1096,6 +1149,7 @@ function restoreProject(s){
  projectImageLinks=s.imageLinks;projectImageFiles=s.imageFiles;
  A=[];B=[];groups=[];decisions={};movementCandidates=[];movementDecisions={};ambiguousCases=[];
  alignmentDraft=null;alignmentMethod='';$('modal').innerHTML='';$('recurringText').textContent='';
+ $('additionalWitnesses').innerHTML='';$('additionalImageRows').innerHTML='';
  $('fileA').value='';$('imagesA').value='';$('dossierNameA').value=names.A;$('dossierNameA').dataset.userEdited='true';
  if($('teiExportDialog').open)$('teiExportDialog').close();teiExportDraft=null;
  setWitnessView('pair',false);focusRow=0;
@@ -1127,7 +1181,7 @@ async function openProjectFile(file){
 // mix two sessions. Keep the current session intact until each operation ends.
 for(const name of ['loadFile','loadImages','runAlign']){
  const original=name==='loadFile'?loadFile:name==='loadImages'?loadImages:runAlign;
- const tracked=async(...args)=>{if(projectOpening){alert(t('projectBusy'));return}pendingProjectOperations++;try{return await original(...args)}finally{pendingProjectOperations--;saveBrowserSession(name==='loadImages')}};
+ const tracked=async(...args)=>{if(projectOpening){alert(t('projectBusy'));return}pendingProjectOperations++;try{return await original(...args)}finally{pendingProjectOperations--;$('removeReference').hidden=!rawByWitness.A?.length&&!images.A.length;saveBrowserSession(name==='loadImages')}};
  if(name==='loadFile')loadFile=tracked;else if(name==='loadImages')loadImages=tracked;else runAlign=tracked;
 }
 $('saveProject').onclick=()=>{try{saveProject()}catch(error){$('projectStatus').textContent=t('error')+error.message}};
@@ -1189,6 +1243,11 @@ window.loadFile=loadFile;window.addWitness=addWitness;window.alignmentDraft=alig
 messages.en.guideTitle='User guide';
 messages.fr.guideTitle='Guide utilisateur';
 messages.it.guideTitle='Guida utente';
+$('removeReference').onclick=()=>removeWitness('A');
+$('additionalWitnesses').onclick=event=>{
+ const id=event.target.dataset.removeWitness;
+ if(id)removeWitness(id);
+};
 $('openUserGuide').onclick=()=>{
  const guide=$('userGuide');
  guide.scrollTop=0;

@@ -412,6 +412,8 @@ test('alignment feedback and TEI titles work through the export menu',{timeout:2
    await progress.waitFor();
    assert.equal(await progress.getAttribute('aria-valuenow'),'0');
    assert.match(await page.locator('#alignmentRemaining').innerText(),/2 remaining/);
+   assert.equal(await page.locator('.alignment-folio').count(),2);
+   assert.equal(await page.locator('.alignment-remaining').evaluate(node=>getComputedStyle(node,'::after').animationName),'alignment-sweep');
    assert.equal(await page.locator('#alignmentToast').isVisible(),false);
   }finally{release()}
   await page.locator('#alignmentToast').waitFor();
@@ -749,5 +751,36 @@ test('the documentation button opens the guide in the selected language',async()
    assert.equal(await guide.isVisible(),false);
   }
   assert.equal(await page.locator('#language').inputValue(),'it');
+ }finally{await page.close()}
+});
+
+test('removing a witness preserves the other comparison and survives reload',async()=>{
+ const page=await browser.newPage();
+ try{
+  await page.goto(url);
+  await upload(page,'#fileA',['alfa prima lezione','beta seconda lezione']);
+  await page.locator('#addWitnessBtn').click();
+  await upload(page,'#fileB',['alfa prima variante','beta seconda lezione']);
+  await page.waitForFunction(()=>Object.keys(pairResults).length===1&&pendingProjectOperations===0);
+  await page.locator('#addWitnessBtn').click();
+  await upload(page,'#fileC',['alfa altra lettura','beta seconda lezione']);
+  await page.waitForFunction(()=>Object.keys(pairResults).length===2&&pendingProjectOperations===0);
+  await page.evaluate(()=>{activatePair('C');setAll(0,'keep');activatePair('B')});
+  const survivor=await page.evaluate(()=>structuredClone({comparison:pairResults.C,review:pairReviews.C}));
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('[data-remove-witness="B"]').click();
+  assert.deepEqual(await page.evaluate(()=>({ids:witnessIds,active:activeWitness,comparison:pairResults.C,review:currentReview('C')})),
+   {ids:['A','C'],active:'C',...survivor});
+  assert.equal(await page.locator('#fileC').evaluate(input=>input.files.length),1);
+  await page.reload();
+  await page.evaluate(()=>sessionReady);
+  assert.deepEqual(await page.evaluate(()=>({ids:witnessIds,comparison:pairResults.C,review:currentReview('C')})),
+   {ids:['A','C'],...survivor});
+  await page.locator('#addWitnessBtn').click();
+  assert.equal(await page.locator('#fileB').count(),1);
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#removeReference').click();
+  assert.deepEqual(await page.evaluate(()=>({ids:witnessIds,stored:rawByWitness.C.length,comparisons:Object.keys(pairResults),reference:rawByWitness.A.length})),
+   {ids:['A','C','B'],stored:1,comparisons:[],reference:0});
  }finally{await page.close()}
 });
