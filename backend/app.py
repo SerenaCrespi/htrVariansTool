@@ -905,7 +905,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.path = path
         elif path in {
             "/frontend.js", "/export-support.js",
-            "/variants-visualizer.html", "/variants-visualizer.js",
+            "/variants-visualizer.html", "/variants-visualizer.js", "/varians-theme.css",
         }:
             self.path = path
         elif path.startswith("/assets/"):

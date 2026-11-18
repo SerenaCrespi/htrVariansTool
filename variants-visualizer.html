@@ -3,34 +3,195 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Variants Visualizer</title>
+<meta name="theme-color" content="#6d0f1d">
+<link rel="stylesheet" href="/varians-theme.css">
 <style>
-:root{--ink:#24242a;--muted:#74747d;--paper:#fff;--bg:#f3f2f0;--accent:#7c2944;--line:#e6e1df;--gold:#fff1cf}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 Georgia,"Times New Roman",serif}
-header{background:#38232d;color:white;padding:25px max(22px,calc((100vw - 1120px)/2)) 22px}header h1{font-size:24px;margin:0 0 3px;font-weight:600}header p{margin:0;color:#e6dce0;font:14px/1.5 system-ui,sans-serif}
-main{max-width:1120px;margin:24px auto;padding:0 20px}.toolbar{position:sticky;top:0;z-index:2;background:#fff;box-shadow:0 4px 14px #0000000d;border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin-bottom:20px;font:14px system-ui,sans-serif;display:flex;gap:12px 20px;align-items:center;flex-wrap:wrap}
-label{font-weight:600}select,button{font:inherit;border:1px solid #d3ccca;border-radius:6px;padding:7px 10px;background:white;color:var(--ink)}button{cursor:pointer}button:hover{border-color:var(--accent);color:var(--accent)}.toggle{display:flex;gap:8px;align-items:center;font-weight:400}.counter{margin-left:auto;color:var(--muted)}
-#content{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:clamp(22px,5vw,60px);box-shadow:0 6px 24px #28151d09}.section{margin:0 0 40px}.section h2,#content > h2{font-size:21px;line-height:1.35;text-align:center;letter-spacing:.04em;margin:0 0 22px;color:#4d2938}.section h2 span{display:block}.section p{margin:0 0 1.2em;text-align:justify;white-space:pre-wrap}.poem{margin:1.2em auto 1.8em;max-width:760px}.verse{min-height:1.65em;padding-left:2.5em;text-indent:-2.5em;white-space:pre-wrap}.apparatus{border:0;font:inherit;color:inherit;display:inline;position:relative;background:var(--gold);border-bottom:1px dotted #a37020;border-radius:2px;cursor:pointer;padding:0 1px}.apparatus:hover{background:#ffe7a5}.apparatus.active{background:#ffdc7b;outline:1px solid #d3992f}.empty{color:#aaa}.details{font:14px/1.5 system-ui,sans-serif;background:#fffaf0;border-left:3px solid #cf9833;padding:10px 13px;margin:-.45em 0 1.1em;border-radius:0 5px 5px 0}.details b{color:#5b3640}.details div+div{margin-top:5px}.note{color:var(--muted);font:13px system-ui,sans-serif;margin-top:15px}.error{padding:18px;background:#fff1f0;border:1px solid #e7b7b3;border-radius:8px;font:14px/1.5 system-ui,sans-serif}[hidden]{display:none!important}.plain-reading{white-space:pre-wrap}.upload{margin:0 0 18px;font:14px system-ui,sans-serif}.back{color:white;font:14px system-ui,sans-serif}.apparatus[aria-expanded="true"]{background:#ffdc7b}.details{margin-top:16px}
-@media(max-width:650px){.counter{margin-left:0;width:100%}#content{padding:22px 18px}.section p{text-align:left}}
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body {
+ margin: 0;
+ background: var(--cream);
+ color: var(--ink);
+ font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.masthead {
+ background: var(--forest);
+ color: white;
+ box-shadow: 0 2px 8px #25382f25;
+}
+.masthead-inner {
+ max-width: 1600px;
+ margin: auto;
+ padding: 13px 22px;
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ flex-wrap: wrap;
+ gap: 8px 20px;
+}
+.brand {
+ display: flex;
+ align-items: center;
+ gap: 14px;
+ min-width: 0;
+}
+.brand img { display: block; width: min(230px, 45vw); height: auto }
+.brand h1 {
+ margin: 0;
+ border-left: 1px solid #ffffff55;
+ padding-left: 14px;
+ color: #fff0c9;
+ font: 600 clamp(16px, 2.5vw, 23px)/1.15 Georgia, serif;
+}
+.back, .btn, select, input::file-selector-button {
+ border: 1px solid #b9c3ba;
+ border-radius: 4px;
+ padding: 7px 11px;
+ color: var(--forest-deep);
+ background: var(--paper);
+ font: 650 12px/1.35 system-ui, sans-serif;
+}
+.back {
+ color: white;
+ border-color: #ffffff66;
+ background: #ffffff12;
+ text-decoration: none;
+}
+.back:hover { background: #ffffff25 }
+.btn, input::file-selector-button { cursor: pointer }
+.btn:hover:enabled { background: var(--sage-pale) }
+.btn:disabled { opacity: .48; cursor: default }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px }
+main { max-width: 1120px; margin: auto; padding: 18px 20px 36px }
+.upload, .toolbar, #content {
+ background: var(--paper);
+ border: 1px solid var(--line);
+ border-radius: 7px;
+ box-shadow: 0 2px 7px #24382d14;
+}
+.upload { overflow: hidden; margin: 0 0 10px }
+.upload h2 {
+ margin: 0;
+ background: var(--sage-pale);
+ color: var(--forest-deep);
+ border-left: 4px solid var(--sage);
+ padding: 11px 15px;
+ font-size: 14px;
+}
+.upload-body { padding: 14px 15px }
+input[type=file] { max-width: 100%; font: inherit; font-size: 12px }
+input::file-selector-button {
+ margin-inline-end: 8px;
+ border-color: var(--forest);
+ background: var(--forest);
+ color: white;
+}
+input::file-selector-button:hover { background: var(--forest-deep) }
+#status { margin: 9px 0 0; color: var(--muted); font-size: 12px }
+.toolbar {
+ position: sticky;
+ top: 0;
+ z-index: 2;
+ margin-bottom: 10px;
+ padding: 10px 12px;
+ display: flex;
+ align-items: center;
+ flex-wrap: wrap;
+ gap: 8px;
+ color: var(--forest-deep);
+}
+.witness-picker, .navigation, .toggle { display: flex; align-items: center; gap: 7px }
+.witness-picker { min-width: 0; font-weight: 650 }
+select { min-width: 0; max-width: 100%; font-weight: 400 }
+.toggle input { accent-color: var(--forest) }
+.navigation { flex-wrap: wrap }
+.counter {
+ margin-left: auto;
+ padding: 5px 8px;
+ border-radius: 4px;
+ background: var(--forest);
+ color: white;
+ font-size: 11px;
+ font-weight: 700;
+}
+#content {
+ padding: clamp(18px, 5vw, 58px);
+ font: 17px/1.7 Georgia, "Times New Roman", serif;
+ overflow-wrap: anywhere;
+}
+.section + .section { margin-top: 32px }
+#content h2 {
+ margin: 0 0 16px;
+ color: var(--forest-deep);
+ font: 600 22px/1.35 Georgia, serif;
+ text-align: center;
+}
+#content p { margin: 0 0 1em; white-space: pre-wrap }
+#content > :last-child, .section > :last-child { margin-bottom: 0 }
+.poem { margin: 1em auto 1.5em; max-width: 760px }
+.verse { min-height: 1.65em; padding-inline-start: 1.5em; text-indent: -1.5em; white-space: pre-wrap }
+.apparatus {
+ display: inline;
+ border: 0;
+ border-bottom: 1px solid #d6b965;
+ border-radius: 3px;
+ padding: 0 2px;
+ background: var(--yellow);
+ color: inherit;
+ font: inherit;
+ line-height: inherit;
+ cursor: pointer;
+ overflow-wrap: anywhere;
+}
+.apparatus:hover, .apparatus[aria-expanded="true"] { background: #ead9a4 }
+.plain-reading { white-space: pre-wrap }
+.details {
+ margin: 10px 0 14px;
+ border: 1px solid #e7dfc9;
+ border-left: 3px solid #d1bd83;
+ border-radius: 5px;
+ padding: 9px 12px;
+ background: #fffdf7;
+ color: var(--ink);
+ font: 13px/1.5 system-ui, sans-serif;
+}
+.details b, .details strong { color: var(--forest-deep) }
+.details div + div { margin-top: 4px }
+@media (max-width: 580px) {
+ .masthead-inner { padding: 8px 13px }
+ .brand { gap: 9px }
+ .brand h1 { padding-left: 9px }
+ main { padding: 10px }
+}
 </style>
 </head>
 <body>
-<header>
-<a class="back" href="/">← Varians workspace</a>
-<h1>Variants Visualizer</h1>
-<p>Read a collation as an edition and compare witness readings.</p>
+<header class="masthead">
+ <div class="masthead-inner">
+  <div class="brand">
+   <img src="/assets/varians_transparency.png" alt="Varians" width="2048" height="682">
+   <h1>Variants Visualizer</h1>
+  </div>
+  <a class="back" href="/">← Varians workspace</a>
+ </div>
 </header>
 <main>
-<div class="upload">
-<label for="export-file">Open a Varians export</label>
-<input id="export-file" type="file" accept=".tei,.xml,.json,application/xml,text/xml,application/json">
-</div>
+<section class="upload">
+ <h2><label for="export-file">Open a Varians export</label></h2>
+ <div class="upload-body">
+  <input id="export-file" type="file" accept=".tei,.xml,.json,application/xml,text/xml,application/json">
+  <p id="status" role="status">Choose a TEI XML or JSON file from the Varians Export menu.</p>
+ </div>
+</section>
 <div class="toolbar" id="toolbar" hidden>
-<label for="wit">Witness</label><select id="wit"></select>
+<div class="witness-picker"><label for="wit">Witness</label><select id="wit"></select></div>
 <label class="toggle"><input id="showAll" type="checkbox" checked> Highlight variants</label>
-<button id="prev" type="button">← Previous variant</button><button id="next" type="button">Next variant →</button>
+<div class="navigation">
+ <button class="btn" id="prev" type="button">← Previous variant</button>
+ <button class="btn" id="next" type="button">Next variant →</button>
+</div>
 <span class="counter" id="counter" role="status"></span>
 </div>
-<p id="status" role="status">Choose a TEI XML or JSON file from the Varians Export menu.</p>
 <article id="content" aria-label="Edition" hidden></article>
 <aside id="details" class="details" aria-label="Variant readings" aria-live="polite" hidden></aside>
 </main>
