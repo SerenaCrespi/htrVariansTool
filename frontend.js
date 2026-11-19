@@ -643,6 +643,9 @@ function renderWitnessImages(rows,sources){
 messages.en.reviewCompleted='Revision completed';
 messages.it.reviewCompleted='Revisione completata';
 messages.fr.reviewCompleted='Révision terminée';
+messages.en.perfectMatch='Perfect match';
+messages.it.perfectMatch='Corrispondenza esatta';
+messages.fr.perfectMatch='Correspondance exacte';
 messages.en.reviewFragments='Review details';
 messages.it.reviewFragments='Dettagli della revisione';
 messages.fr.reviewFragments='Détails de la révision';
@@ -672,11 +675,13 @@ function renderWitnessComparison(facsimiles,reviewAnchor){
  const openReview=new Set([...$('results').querySelectorAll('.witness-review-details[open]')].map(node=>
   `${node.closest('article').id}:${node.closest('.witness-card').dataset.witness}`));
 
- const card=(id,reading,entries=[])=>{
+ const card=(id,reading,entries=[],perfectMatch=false)=>{
   const complete=entries.some(entry=>entry.diff.diff.length)&&entries.every(entry=>entry.pending===0);
+  const status=complete?
+   `<span class="review-completed" role="status"><span class="review-check" aria-hidden="true">✓</span>${t('reviewCompleted')}</span>`:
+   perfectMatch?`<span class="perfect-match" role="status"><span class="review-check" aria-hidden="true">=</span>${t('perfectMatch')}</span>`:'';
   return `<section class="witness-card ${id==='A'?'witness-reference':''}" data-witness="${id}">
-  <div class="witness-card-heading"><h4>${esc(names[id])}</h4>${complete?
-   `<span class="review-completed" role="status"><span class="review-check" aria-hidden="true">✓</span>${t('reviewCompleted')}</span>`:''}</div>
+  <div class="witness-card-heading"><h4>${esc(names[id])}</h4>${status}</div>
   ${reading}<div class="witness-facsimiles" data-witness-facsimiles="${id}"></div></section>`;
  };
  const text=row=>{
@@ -686,9 +691,12 @@ function renderWitnessComparison(facsimiles,reviewAnchor){
   ${ids.map(id=>{
    const readings=row.entries.filter(entry=>entry.id===id);
    const pairText=readings.flatMap(entry=>entry.left).map(item=>item.text).join(' ');
-   if(readings.length>1)return card(id,combinedWitnessReading(readings,row.index+1,openReview.has(`witness-unit-${row.index}:${id}`)),readings);
+   const witnessText=readings.flatMap(entry=>entry.right).map(item=>item.text).join(' ');
+   const perfectMatch=Boolean(referenceText.trim())&&pairText===referenceText&&witnessText===referenceText&&
+    readings.every(entry=>!entry.uncertain&&entry.diff.diff.length===0);
+   if(readings.length>1)return card(id,combinedWitnessReading(readings,row.index+1,openReview.has(`witness-unit-${row.index}:${id}`)),readings,perfectMatch);
    return card(id,readings.length?witnessReading(readings[0],pairText!==referenceText,row.index+1):
-    `<div class="multi-reading textline"><em>${t('noPassage')}</em></div>`,readings);
+    `<div class="multi-reading textline"><em>${t('noPassage')}</em></div>`,readings,perfectMatch);
   }).join('')}</div></div>`;
  };
  const showImages=rows=>{
