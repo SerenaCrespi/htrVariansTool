@@ -151,22 +151,23 @@ def normalize(text: str) -> list[str]:
     return re.findall(r"[^\W_]+", text, flags=re.UNICODE)
 
 
+@lru_cache(maxsize=65536)
+def _char_distance(x: str, y: str) -> float:
+    prev = list(range(len(y) + 1))
+    for i, cx in enumerate(x, 1):
+        cur = [i]
+        for j, cy in enumerate(y, 1):
+            cur.append(min(cur[-1] + 1, prev[j] + 1,
+                           prev[j - 1] + (cx != cy)))
+        prev = cur
+    return prev[-1] / max(len(x), len(y), 1)
+
 @lru_cache(maxsize=32768)
 def similarity(left: str, right: str) -> float:
     """Return a cached lexical score combining edit distance and word order."""
     a, b = normalize(left), normalize(right)
     if not a and not b:
         return 1.0
-
-    def char_distance(x: str, y: str) -> float:
-        prev = list(range(len(y) + 1))
-        for i, cx in enumerate(x, 1):
-            cur = [i]
-            for j, cy in enumerate(y, 1):
-                cur.append(min(cur[-1] + 1, prev[j] + 1,
-                               prev[j - 1] + (cx != cy)))
-            prev = cur
-        return prev[-1] / max(len(x), len(y), 1)
 
     # Word-level Levenshtein allows small spelling/HTR differences at a
     # fractional substitution cost instead of treating every changed word as
@@ -175,7 +176,7 @@ def similarity(left: str, right: str) -> float:
     for i, wa in enumerate(a, 1):
         cur = [i]
         for j, wb in enumerate(b, 1):
-            sub = 0.0 if wa == wb else char_distance(wa, wb)
+            sub = 0.0 if wa == wb else _char_distance(wa, wb)
             cur.append(min(cur[-1] + 1, prev[j] + 1, prev[j - 1] + sub))
         prev = cur
     edit_similarity = 1 - prev[-1] / max(len(a), len(b), 1)
