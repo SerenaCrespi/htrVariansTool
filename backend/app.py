@@ -23,6 +23,7 @@ from urllib.parse import unquote, urlparse
 import xml.etree.ElementTree as ET
 
 
+import embedding_presets
 from alto_support import ancestors, resolve_tagrefs, tag_definitions
 from relocations import find_displaced_passages, summarize_ambiguities
 
@@ -853,7 +854,8 @@ def _alignment_groups_as_rows(groups: list[dict], a: list[dict], b: list[dict]) 
     return rows
 
 
-ALIGNMENT_PRESETS = ("auto", "lines")
+ALIGNMENT_PRESETS = ("auto", *embedding_presets.PRESETS)
+ACCEPTED_PRESETS = (*ALIGNMENT_PRESETS, "lines")
 # The line-level algorithm evaluates up to 16 text comparisons per DP cell.
 MAX_EXPERIMENT_LINE_CELLS = 40_000
 
@@ -877,8 +879,17 @@ def alignment_evaluation(rows, a, b):
     }
 
 
+def _reference_mappings(rows, count):
+    mappings = [set() for _ in range(count)]
+    for row in rows:
+        if row["b1"] > row["b0"]:
+            for i in range(row["a0"], row["a1"]):
+                mappings[i].update(range(row["b0"], row["b1"]))
+    return mappings
+
+
 def align_witness_inputs(a: list[dict], b: list[dict], progress=None, *,
-                         include_displacements=True, preset="auto"):
+                         include_displacements=True, preset="auto", prepared_embeddings=None):
     """Align the word streams and compute displaced-passage suggestions."""
     if progress:
         progress(1)
@@ -889,7 +900,13 @@ def align_witness_inputs(a: list[dict], b: list[dict], progress=None, *,
             alignments = align_alto_words(a, b)
         except Exception as exc:
             print(f"[align] Global word alignment failed; using line-level backup: {exc}")
-    if alignments:
+    if preset in embedding_presets.PRESETS:
+        line_groups = embedding_presets.align(a, b, preset, similarity, normalize, prepared_embeddings)
+        alignments = _alignment_groups_as_rows(line_groups, a, b)
+        for row, group in zip(alignments, line_groups):
+            row.update(semantic_score=group["semantic_score"], semantic_review=group["semantic_review"])
+        alignment_method = f"{preset} · {embedding_presets.MODEL} · {embedding_presets.MODEL_REVISION[:8]}"
+    elif alignments:
         alignment_method = "word-level Levenshtein in ALTO order"
     else:
         line_groups = _align_dp(a, b)
@@ -1007,21 +1024,37 @@ class Handler(SimpleHTTPRequestHandler):
             if not a or not b:
                 raise ValueError("Each witness must contain at least one textual unit.")
             preset = payload.get("preset", "auto")
-            if preset not in ALIGNMENT_PRESETS:
+            if preset not in ACCEPTED_PRESETS:
                 raise ValueError("Unknown alignment preset.")
             line_available = len(a) * len(b) <= MAX_EXPERIMENT_LINE_CELLS
             if payload.get("compare_presets") is True:
                 progress(1)
                 evaluations = []
+                evaluated = {}
+                prepared = None
+                unavailable = None
                 for choice in ALIGNMENT_PRESETS:
-                    if choice == "lines" and not line_available:
-                        evaluations.append({"preset": choice, "unavailable": True})
+                    try:
+                        if choice in embedding_presets.PRESETS:
+                            if unavailable:
+                                raise embedding_presets.EmbeddingUnavailable(unavailable)
+                            if prepared is None:
+                                prepared = embedding_presets.prepare(a, b, normalize)
+                        rows, method, _ = align_witness_inputs(
+                            a, b, include_displacements=False, preset=choice,
+                            prepared_embeddings=prepared)
+                    except embedding_presets.EmbeddingUnavailable as exc:
+                        unavailable = str(exc)
+                        evaluations.append({"preset": choice, "unavailable": unavailable})
                         continue
-                    rows, method, _ = align_witness_inputs(
-                        a, b, include_displacements=False, preset=choice)
+                    evaluated[choice] = _reference_mappings(rows, len(a))
                     evaluations.append({"preset": choice, "method": method,
                                         **alignment_evaluation(rows, a, b)})
-                result = {"evaluations": evaluations}
+                disagreements = [
+                    i + 1 for i, alternatives in enumerate(zip(*evaluated.values()))
+                    if any(mapping != alternatives[0] for mapping in alternatives[1:])
+                ]
+                result = {"evaluations": evaluations, "disagreements": disagreements}
                 if streaming:
                     send_event({"result": result})
                 else:

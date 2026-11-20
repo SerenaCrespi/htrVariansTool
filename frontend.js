@@ -246,32 +246,35 @@ async function requestAlignment(payload,update){
 }
 Object.assign(messages.en,{
  alignmentPreset:'Alignment method',alignmentAuto:'Automatic (recommended)',
- alignmentLines:'By unit (weighted Levenshtein)',compareAlignment:'Compare methods',
+ alignmentSemantic:'Semantic (experimental)',alignmentHybrid:'Hybrid (experimental)',
+ alignmentModelHint:'Semantic and hybrid share a 135 MB model downloaded on first use.',
+ alignmentDisagreements:'Reference units with different mappings ({count})',compareAlignment:'Compare methods',
  comparingAlignment:'Comparing methods for {name}…',
  alignmentEvaluation:'{name} · Lexical score / coverage',
- alignmentEvaluationHint:'Use the score to compare suggestions on the same texts. It measures lexical agreement, not verified alignment accuracy.',
- alignmentPresetUnavailable:'Unavailable above 40,000 unit pairs.'
+ alignmentEvaluationHint:'Use the score to compare suggestions on the same texts. It measures lexical agreement, not verified alignment accuracy.'
 });
 Object.assign(messages.it,{
  alignmentPreset:'Metodo di allineamento',alignmentAuto:'Automatico (consigliato)',
- alignmentLines:'Per unità (Levenshtein ponderata)',compareAlignment:'Confronta i metodi',
+ alignmentSemantic:'Semantico (sperimentale)',alignmentHybrid:'Ibrido (sperimentale)',
+ alignmentModelHint:'Semantico e Ibrido condividono un modello da 135 MB scaricato al primo uso.',
+ alignmentDisagreements:'Unità di riferimento con accostamenti diversi ({count})',compareAlignment:'Confronta i metodi',
  comparingAlignment:'Confronto dei metodi per {name}…',
  alignmentEvaluation:'{name} · Punteggio lessicale / copertura',
- alignmentEvaluationHint:'Il punteggio permette di confrontare le proposte sugli stessi testi. Misura la concordanza lessicale, mentre l’accuratezza richiede una verifica.',
- alignmentPresetUnavailable:'Disponibile fino a 40.000 coppie di unità.'
+ alignmentEvaluationHint:'Il punteggio permette di confrontare le proposte sugli stessi testi. Misura la concordanza lessicale, mentre l’accuratezza richiede una verifica.'
 });
 Object.assign(messages.fr,{
  alignmentPreset:'Méthode d’alignement',alignmentAuto:'Automatique (recommandée)',
- alignmentLines:'Par unité (Levenshtein pondérée)',compareAlignment:'Comparer les méthodes',
+ alignmentSemantic:'Sémantique (expérimental)',alignmentHybrid:'Hybride (expérimental)',
+ alignmentModelHint:'Les deux méthodes partagent un modèle de 135 Mo téléchargé à la première utilisation.',
+ alignmentDisagreements:'Unités de référence avec des correspondances différentes ({count})',compareAlignment:'Comparer les méthodes',
  comparingAlignment:'Comparaison des méthodes pour {name}…',
  alignmentEvaluation:'{name} · Score lexical / couverture',
- alignmentEvaluationHint:'Le score sert à comparer les propositions sur les mêmes textes. Il mesure la concordance lexicale. La justesse de l’alignement reste à vérifier.',
- alignmentPresetUnavailable:'Disponible jusqu’à 40 000 paires d’unités.'
+ alignmentEvaluationHint:'Le score sert à comparer les propositions sur les mêmes textes. Il mesure la concordance lexicale. La justesse de l’alignement reste à vérifier.'
 });
 messages.en['weighted Levenshtein by unit']='Weighted Levenshtein by unit';
 messages.it['weighted Levenshtein by unit']='Levenshtein ponderata per unità';
 messages.fr['weighted Levenshtein by unit']='Levenshtein pondérée par unité';
-const alignmentPresets={auto:'alignmentAuto',lines:'alignmentLines'};
+const alignmentPresets={auto:'alignmentAuto',semantic:'alignmentSemantic',hybrid:'alignmentHybrid'};
 async function compareAlignmentPresets(){
  const output=$('alignmentEvaluation'),button=$('compareAlignmentBtn');
  if(button.disabled)return;
@@ -289,15 +292,15 @@ async function compareAlignmentPresets(){
  button.disabled=true;
  output.textContent=t('comparingAlignment',{name});
  try{
-  const {evaluations}=await requestAlignment({...payload,compare_presets:true},()=>{});
+  const {evaluations,disagreements}=await requestAlignment({...payload,compare_presets:true},()=>{});
   if(!current()){output.textContent='';return}
   const percent=value=>value===null?'—':new Intl.NumberFormat(language,{style:'percent',maximumFractionDigits:1}).format(value/100);
   const items=evaluations.map(({preset,method,score,coverage,unavailable})=>{
    const label=t(alignmentPresets[preset]);
-   const result=unavailable?t('alignmentPresetUnavailable'):`${percent(score)} / ${percent(coverage)} · ${t(method)}`;
+   const result=unavailable?unavailable:`${percent(score)} / ${percent(coverage)} · ${t(method)}`;
    return `<li>${esc(label)} — ${esc(result)}</li>`;
   });
-  output.innerHTML=`<strong>${esc(t('alignmentEvaluation',{name}))}</strong><ul>${items.join('')}</ul><p class="hint">${esc(t('alignmentEvaluationHint'))}</p>`;
+  output.innerHTML=`<strong>${esc(t('alignmentEvaluation',{name}))}</strong><ul>${items.join('')}</ul>${disagreements.length?`<details><summary>${esc(t('alignmentDisagreements',{count:disagreements.length}))}</summary><p>${disagreements.join(', ')}</p></details>`:''}<p class="hint">${esc(t('alignmentEvaluationHint'))}</p>`;
  }catch(error){output.textContent=current()?t('error')+error.message:''}
  finally{button.disabled=false}
 }
@@ -1117,7 +1120,7 @@ function validateProject(project){
  if(!strings(ids)||!ids.length||ids.length>10||ids[0]!=='A'||new Set(ids).size!==ids.length||ids.some(id=>!(/^[A-J]$/).test(id)))fail();
  for(const key of ['names','rawByWitness','pairResults','pairReviews','iiif','imageFiles','imageLinks'])if(!obj(s[key]))fail();
  if(!['en','fr','it'].includes(s.language)||!['all','variants','pending','uncertain'].includes(s.viewFilter)||!['prose','poetry','drama'].includes(s.genre)||typeof s.editedMode!=='boolean')fail();
- if(s.alignmentPreset!==undefined&&!Object.hasOwn(alignmentPresets,s.alignmentPreset))fail();
+ if(s.alignmentPreset!==undefined&&s.alignmentPreset!=='lines'&&!Object.hasOwn(alignmentPresets,s.alignmentPreset))fail();
  if(s.genreRanges!==undefined&&(!Array.isArray(s.genreRanges)||!s.genreRanges.every(r=>obj(r)&&Number.isInteger(r.start)&&Number.isInteger(r.end)&&['prose','poetry','drama'].includes(r.genre))))fail();
  if(s.titleLines!==undefined&&!strings(s.titleLines))fail();
  if(s.apparatusIds!==undefined){
@@ -1264,7 +1267,7 @@ function restoreProject(s){
  images=Object.fromEntries(witnessIds.map(id=>[id,[]]));imageStatus={};imageOverrides={};
  projectImageLinks=s.imageLinks;projectImageFiles=s.imageFiles;
  A=[];B=[];groups=[];decisions={};movementCandidates=[];movementDecisions={};ambiguousCases=[];
- $('alignmentPreset').value=s.alignmentPreset||'auto';$('alignmentEvaluation').textContent='';
+ $('alignmentPreset').value=Object.hasOwn(alignmentPresets,s.alignmentPreset)?s.alignmentPreset:'auto';$('alignmentEvaluation').textContent='';
  alignmentDraft=null;alignmentMethod='';$('modal').innerHTML='';$('recurringText').textContent='';
  $('additionalWitnesses').innerHTML='';$('additionalImageRows').innerHTML='';
  $('fileA').value='';$('imagesA').value='';$('dossierNameA').value=names.A;$('dossierNameA').dataset.userEdited='true';

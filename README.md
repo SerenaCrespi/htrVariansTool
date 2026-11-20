@@ -40,19 +40,38 @@ Preserve any local changes before switching branches. After updating, stop and
 restart the Python backend, then refresh the browser with **Ctrl+Shift+R**
 (**Cmd+Shift+R** on macOS).
 
-## Alignment methods
+## Experimental alignment presets
 
-**Automatic (recommended)** uses the existing word-stream alignment across
-line breaks, with the existing fallback. **By unit** uses weighted Levenshtein
-to align groups of up to four units on each side, with explicit gaps.
+**Automatic** runs the existing word-stream alignment. **Semantic** uses
+normalized multilingual E5 embeddings, and **Hybrid** combines their cosine
+similarity (65%) with weighted lexical similarity (35%). Both experimental
+presets work on the same ALTO input, support 1↔1, 1↔2 and 2↔1, and leave
+one-sided passages as gaps. Unique in-order lexical anchors guide the search
+band. Its radius varies from 8 to 64 units. The experimental gain baseline
+is 0.72, the grouped-match penalty is 0.08, and one-sided steps cost 0.14.
+These starting values are provisional. No user annotation is required to run them.
 
-**Compare methods** evaluates both presets against the active witness and
-leaves the working alignment and review decisions intact. The lexical score
-counts in-order matches of normalized words within aligned groups, as a
-percentage of all words across both witnesses. Coverage gives the percentage
-of words in groups with text on both sides. Both figures are diagnostic and
-depend on how the texts are aligned. The unit preset is available for up to
-40,000 candidate unit pairs (reference unit count × witness unit count).
+Create and activate a virtual environment if the launcher does not already
+have one, then install the optional CPU dependencies from the checkout:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-embeddings.txt
+python backend/app.py
+```
+
+On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell.
+The first semantic comparison downloads a shared 135 MB INT8 ONNX model
+and tokenizer from Hugging Face, verifies their checksums and stores them
+under `$XDG_CACHE_HOME/htrvarians` or `~/.cache/htrvarians`. Transcriptions
+stay on the machine. The downloaded model works offline on subsequent runs.
+The standard-library-only setup still supports Automatic.
+
+**Compare methods** evaluates the active witness without replacing the
+working alignment or touching review decisions. It lists lexical agreement,
+coverage, and reference units for which the methods disagree on counterpart
+units. These diagnostics are not estimates of verified accuracy.
 
 ## Review workflow
 
