@@ -852,22 +852,49 @@ def _alignment_groups_as_rows(groups: list[dict], a: list[dict], b: list[dict]) 
     return rows
 
 
-def align_witness_inputs(a: list[dict], b: list[dict], progress=None, *, include_displacements=True):
+ALIGNMENT_PRESETS = ("auto", "lines")
+# The line-level algorithm evaluates up to 16 text comparisons per DP cell.
+MAX_EXPERIMENT_LINE_CELLS = 40_000
+
+
+def alignment_evaluation(rows, a, b):
+    """Measure lexical agreement and coverage on a common token scale."""
+    total = sum(len(normalize(unit["text"])) for units in (a, b) for unit in units)
+    matched = covered = 0
+    for row in rows:
+        left, right = (
+            normalize(" ".join(item["text"] for item in row[key]))
+            for key in ("aItems", "bItems")
+        )
+        if left and right:
+            covered += len(left) + len(right)
+            matched += sum(block.size for block in
+                           SequenceMatcher(None, left, right, autojunk=False).get_matching_blocks())
+    return {
+        "score": round(200 * matched / total, 1) if total else None,
+        "coverage": round(100 * covered / total, 1) if total else None,
+    }
+
+
+def align_witness_inputs(a: list[dict], b: list[dict], progress=None, *,
+                         include_displacements=True, preset="auto"):
     """Align the word streams and compute displaced-passage suggestions."""
     if progress:
         progress(1)
     line_groups = None
-    try:
-        alignments = align_alto_words(a, b)
-    except Exception as exc:
-        print(f"[align] Global word alignment failed; using line-level backup: {exc}")
-        alignments = []
+    alignments = []
+    if preset == "auto":
+        try:
+            alignments = align_alto_words(a, b)
+        except Exception as exc:
+            print(f"[align] Global word alignment failed; using line-level backup: {exc}")
     if alignments:
         alignment_method = "word-level Levenshtein in ALTO order"
     else:
         line_groups = _align_dp(a, b)
         alignments = _alignment_groups_as_rows(line_groups, a, b)
-        alignment_method = "weighted Levenshtein backup"
+        alignment_method = ("weighted Levenshtein by unit" if preset == "lines"
+                            else "weighted Levenshtein backup")
     transpositions = []
     if include_displacements:
         if progress:
@@ -978,11 +1005,33 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("Request does not contain ALTO files or sentences to align.")
             if not a or not b:
                 raise ValueError("Each witness must contain at least one textual unit.")
-            # Both uploaded ALTO and frontend-prepared sentence payloads use
-            # the same continuous word-stream alignment.
+            preset = payload.get("preset", "auto")
+            if preset not in ALIGNMENT_PRESETS:
+                raise ValueError("Unknown alignment preset.")
+            line_available = len(a) * len(b) <= MAX_EXPERIMENT_LINE_CELLS
+            if payload.get("compare_presets") is True:
+                progress(1)
+                evaluations = []
+                for choice in ALIGNMENT_PRESETS:
+                    if choice == "lines" and not line_available:
+                        evaluations.append({"preset": choice, "unavailable": True})
+                        continue
+                    rows, method, _ = align_witness_inputs(
+                        a, b, include_displacements=False, preset=choice)
+                    evaluations.append({"preset": choice, "method": method,
+                                        **alignment_evaluation(rows, a, b)})
+                result = {"evaluations": evaluations}
+                if streaming:
+                    send_event({"result": result})
+                else:
+                    self._json(200, result)
+                return
+            if preset == "lines" and not line_available:
+                raise ValueError("The unit-based preset exceeds the limit of 40,000 unit pairs.")
             alignments, alignment_method, transpositions = align_witness_inputs(
                 a, b, progress=progress if streaming else None,
                 include_displacements=payload.get("include_displacements") is not False,
+                preset=preset,
             )
             result = {
                 "witnesses": {"A": a, "B": b},

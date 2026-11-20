@@ -244,6 +244,66 @@ async function requestAlignment(payload,update){
   }
  }finally{await reader.cancel()}
 }
+Object.assign(messages.en,{
+ alignmentPreset:'Alignment method',alignmentAuto:'Automatic (recommended)',
+ alignmentLines:'By unit (weighted Levenshtein)',compareAlignment:'Compare methods',
+ comparingAlignment:'Comparing methods for {name}…',
+ alignmentEvaluation:'{name} · Lexical score / coverage',
+ alignmentEvaluationHint:'Use the score to compare suggestions on the same texts. It measures lexical agreement, not verified alignment accuracy.',
+ alignmentPresetUnavailable:'Unavailable above 40,000 unit pairs.'
+});
+Object.assign(messages.it,{
+ alignmentPreset:'Metodo di allineamento',alignmentAuto:'Automatico (consigliato)',
+ alignmentLines:'Per unità (Levenshtein ponderata)',compareAlignment:'Confronta i metodi',
+ comparingAlignment:'Confronto dei metodi per {name}…',
+ alignmentEvaluation:'{name} · Punteggio lessicale / copertura',
+ alignmentEvaluationHint:'Il punteggio permette di confrontare le proposte sugli stessi testi. Misura la concordanza lessicale, mentre l’accuratezza richiede una verifica.',
+ alignmentPresetUnavailable:'Disponibile fino a 40.000 coppie di unità.'
+});
+Object.assign(messages.fr,{
+ alignmentPreset:'Méthode d’alignement',alignmentAuto:'Automatique (recommandée)',
+ alignmentLines:'Par unité (Levenshtein pondérée)',compareAlignment:'Comparer les méthodes',
+ comparingAlignment:'Comparaison des méthodes pour {name}…',
+ alignmentEvaluation:'{name} · Score lexical / couverture',
+ alignmentEvaluationHint:'Le score sert à comparer les propositions sur les mêmes textes. Il mesure la concordance lexicale. La justesse de l’alignement reste à vérifier.',
+ alignmentPresetUnavailable:'Disponible jusqu’à 40 000 paires d’unités.'
+});
+messages.en['weighted Levenshtein by unit']='Weighted Levenshtein by unit';
+messages.it['weighted Levenshtein by unit']='Levenshtein ponderata per unità';
+messages.fr['weighted Levenshtein by unit']='Levenshtein pondérée par unité';
+const alignmentPresets={auto:'alignmentAuto',lines:'alignmentLines'};
+async function compareAlignmentPresets(){
+ const output=$('alignmentEvaluation'),button=$('compareAlignmentBtn');
+ if(button.disabled)return;
+ const id=rawByWitness[activeWitness]?.length||editedMode?activeWitness:
+  witnessIds.slice(1).find(id=>rawByWitness[id]?.length);
+ if(editedMode?(!A.length||!B.length):(!rawByWitness.A?.length||!id)){
+  output.textContent=t('alignBoth');
+  return;
+ }
+ const edited=editedMode,sources=edited?[A,B]:[rawByWitness.A,rawByWitness[id]];
+ const payload=edited?{sentences:{A:sources[0],B:sources[1]}}:{alto:{A:sources[0],B:sources[1]}};
+ const name=names[id];
+ const current=()=>edited?editedMode&&id===activeWitness&&sources[0]===A&&sources[1]===B:
+  sources[0]===rawByWitness.A&&sources[1]===rawByWitness[id];
+ button.disabled=true;
+ output.textContent=t('comparingAlignment',{name});
+ try{
+  const {evaluations}=await requestAlignment({...payload,compare_presets:true},()=>{});
+  if(!current()){output.textContent='';return}
+  const percent=value=>value===null?'—':new Intl.NumberFormat(language,{style:'percent',maximumFractionDigits:1}).format(value/100);
+  const items=evaluations.map(({preset,method,score,coverage,unavailable})=>{
+   const label=t(alignmentPresets[preset]);
+   const result=unavailable?t('alignmentPresetUnavailable'):`${percent(score)} / ${percent(coverage)} · ${t(method)}`;
+   return `<li>${esc(label)} — ${esc(result)}</li>`;
+  });
+  output.innerHTML=`<strong>${esc(t('alignmentEvaluation',{name}))}</strong><ul>${items.join('')}</ul><p class="hint">${esc(t('alignmentEvaluationHint'))}</p>`;
+ }catch(error){output.textContent=current()?t('error')+error.message:''}
+ finally{button.disabled=false}
+}
+$('compareAlignmentBtn').onclick=compareAlignmentPresets;
+$('alignmentPreset').onchange=()=>saveBrowserSession();
+
 async function runAlign(useEdited=false,onlyWitnesses=null){
  // File imports scope the calculation to that witness. Only an explicit full
  // realignment (or a changed reference) rebuilds every comparison.
@@ -253,6 +313,7 @@ async function runAlign(useEdited=false,onlyWitnesses=null){
  const targets=useEdited?[activeWitness]:(incremental?onlyWitnesses:witnessIds.slice(1)).filter(id=>witnessIds.includes(id)&&id!=='A'&&rawByWitness[id]?.length);
  if(useEdited?(!A.length||!B.length):(!rawByWitness.A?.length||!targets.length)){$('loadedStatus').textContent=t('alignBoth');$('alignSummary').textContent=t('alignBoth');return false}
  if(!useEdited&&targets.some(id=>pairResults[id])&&!confirm(t(incremental?'replaceWitnessWarning':'rerunWarning'))){$('loadedStatus').textContent=t('alignmentCancelled');return false;}
+ const preset=$('alignmentPreset').value;
  const button=$('alignBtn');button.disabled=true;
  alignmentsInProgress++;
  const progress=targets.map(()=>0);
@@ -266,7 +327,7 @@ async function runAlign(useEdited=false,onlyWitnesses=null){
  $('alignSummary').textContent='';
  try{
   if(useEdited){
-   const id=targets[0],data=await requestAlignment({sentences:{A,B},names:{A:names.A,B:names[id]}},n=>update(0,n));
+   const id=targets[0],data=await requestAlignment({preset,sentences:{A,B},names:{A:names.A,B:names[id]}},n=>update(0,n));
    pairResults[id]={A:data.witnesses.A,B:data.witnesses.B,alignments:data.alignments,possible_transpositions:data.possible_transpositions||[],frequent_ambiguous_cases:data.frequent_ambiguous_cases||[],alignment_method:data.alignment_method,semantic_fallback:data.semantic_fallback};
    pairReviews[id]={decisions:{},movementDecisions:{}};
    editedMode=false;
@@ -275,7 +336,7 @@ async function runAlign(useEdited=false,onlyWitnesses=null){
    for(let start=0;start<targets.length;start+=2){
     const batch=await Promise.allSettled(targets.slice(start,start+2).map(async(id,index)=>{
      try{
-      const data=await requestAlignment({alto:{A:rawByWitness.A,B:rawByWitness[id]},names:{A:names.A,B:names[id]}},n=>update(start+index,n));
+      const data=await requestAlignment({preset,alto:{A:rawByWitness.A,B:rawByWitness[id]},names:{A:names.A,B:names[id]}},n=>update(start+index,n));
       return [id,data];
      }catch(error){throw Error(`${names[id]}: ${error.message}`)}
     }));
@@ -1037,7 +1098,7 @@ const PROJECT_FORMAT='varians-project',PROJECT_VERSION=1,MAX_PROJECT_BYTES=100*1
 function captureProject(detach=true){
  const reviews=Object.fromEntries(Object.keys(pairResults).map(id=>[id,currentReview(id)]));
  const state={witnessIds,names:Object.fromEntries(witnessIds.map(id=>[id,names[id]])),rawByWitness:Object.fromEntries(witnessIds.map(id=>[id,rawByWitness[id]])),pairResults,pairReviews:reviews,activeWitness,editedMode,
-  language,viewFilter,genre:uniformGenre,genreRanges,titleLines:[...titleLines],
+  language,viewFilter,alignmentPreset:$('alignmentPreset').value,genre:uniformGenre,genreRanges,titleLines:[...titleLines],
   ...(apparatusIds.size?{apparatusIds:[...apparatusIds]}:{}),
   iiif:Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||''])),
   imageFiles:Object.fromEntries(witnessIds.map(id=>[id,images[id]?.length?images[id].map(x=>x.name):(projectImageFiles[id]||[])])),
@@ -1056,6 +1117,7 @@ function validateProject(project){
  if(!strings(ids)||!ids.length||ids.length>10||ids[0]!=='A'||new Set(ids).size!==ids.length||ids.some(id=>!(/^[A-J]$/).test(id)))fail();
  for(const key of ['names','rawByWitness','pairResults','pairReviews','iiif','imageFiles','imageLinks'])if(!obj(s[key]))fail();
  if(!['en','fr','it'].includes(s.language)||!['all','variants','pending','uncertain'].includes(s.viewFilter)||!['prose','poetry','drama'].includes(s.genre)||typeof s.editedMode!=='boolean')fail();
+ if(s.alignmentPreset!==undefined&&!Object.hasOwn(alignmentPresets,s.alignmentPreset))fail();
  if(s.genreRanges!==undefined&&(!Array.isArray(s.genreRanges)||!s.genreRanges.every(r=>obj(r)&&Number.isInteger(r.start)&&Number.isInteger(r.end)&&['prose','poetry','drama'].includes(r.genre))))fail();
  if(s.titleLines!==undefined&&!strings(s.titleLines))fail();
  if(s.apparatusIds!==undefined){
@@ -1202,6 +1264,7 @@ function restoreProject(s){
  images=Object.fromEntries(witnessIds.map(id=>[id,[]]));imageStatus={};imageOverrides={};
  projectImageLinks=s.imageLinks;projectImageFiles=s.imageFiles;
  A=[];B=[];groups=[];decisions={};movementCandidates=[];movementDecisions={};ambiguousCases=[];
+ $('alignmentPreset').value=s.alignmentPreset||'auto';$('alignmentEvaluation').textContent='';
  alignmentDraft=null;alignmentMethod='';$('modal').innerHTML='';$('recurringText').textContent='';
  $('additionalWitnesses').innerHTML='';$('additionalImageRows').innerHTML='';
  $('fileA').value='';$('imagesA').value='';$('dossierNameA').value=names.A;$('dossierNameA').dataset.userEdited='true';

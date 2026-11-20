@@ -40,6 +40,20 @@ Preserve any local changes before switching branches. After updating, stop and
 restart the Python backend, then refresh the browser with **Ctrl+Shift+R**
 (**Cmd+Shift+R** on macOS).
 
+## Alignment methods
+
+**Automatic (recommended)** uses the existing word-stream alignment across
+line breaks, with the existing fallback. **By unit** uses weighted Levenshtein
+to align groups of up to four units on each side, with explicit gaps.
+
+**Compare methods** evaluates both presets against the active witness and
+leaves the working alignment and review decisions intact. The lexical score
+counts in-order matches of normalized words within aligned groups, as a
+percentage of all words across both witnesses. Coverage gives the percentage
+of words in groups with text on both sides. Both figures are diagnostic and
+depend on how the texts are aligned. The unit preset is available for up to
+40,000 candidate unit pairs (reference unit count × witness unit count).
+
 ## Review workflow
 
 1. Select the reference witness’s ALTO files and enter its witness name.
