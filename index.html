@@ -98,6 +98,25 @@
 .guide-body h3{margin-bottom:4px;color:var(--forest)}
 .guide-body li{margin-bottom:6px}
 @media(max-width:560px){.topbar-right{gap:6px}.documentation-link{padding:5px;gap:4px;letter-spacing:0;font-size:.64rem}.documentation-link svg{width:14px;height:14px}.guide-body,.guide-header{padding-inline:12px}}
+#alignmentAudit:not(:empty){margin-block:1rem}
+.audit-outcome{background:#fff8e9;border-inline-start:3px solid #b48732;padding:.8rem 1rem}
+.audit-outcome p:last-child,.audit-passage p:last-child{margin-bottom:0}
+.audit-unit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:.8rem;border:1px solid #ded6cd;border-radius:.3rem;padding:.7rem;margin:0 0 .75rem;min-width:0}
+.audit-unit legend{padding-inline:.35rem;font-weight:700}
+.audit-passage{background:#f8f3eb;padding:.65rem}
+.audit-choice{display:flex;align-items:flex-start;gap:.45rem;border:1px solid #ded6cd;border-radius:.25rem;padding:.4rem .55rem;margin-top:.35rem;cursor:pointer;overflow-wrap:anywhere}
+.audit-choice:has(:checked){background:#edf5ef;border-color:#37664a}
+.audit-choice input{flex:none;margin-top:.23rem;accent-color:#38674c}
+.audit-line,.audit-table small{display:block}
+.audit-line small{color:#5d5350;margin-inline-end:.3rem}
+.audit-actions{display:flex;flex-wrap:wrap;gap:.35rem}
+.audit-custom{margin-top:.4rem}
+.audit-custom[hidden]{display:none}
+.audit-table{overflow-x:auto}
+.audit-table table{width:100%;border-collapse:collapse}
+.audit-table th,.audit-table td{text-align:start;padding:.45rem;border-bottom:1px solid #ded6cd}
+.audit-table small{font-weight:400}
+@media(max-width:850px){.audit-unit{grid-template-columns:1fr}}
 </style></head><body>
 <header class="navbar"><div class="brand brand-lockup" aria-label="VARIANS"><span class="brand-logo-frame"><img class="varians-logo" src="/assets/varians_transparency.png" alt="VARIANS"></span></div><div class="topbar-right"><button type="button" class="documentation-link" id="openUserGuide" aria-haspopup="dialog" aria-controls="userGuide"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C9.5 4.5 5.5 4 3 5.5v13c2.5-1.5 6.5-1 9 1 2.5-2 6.5-2.5 9-1v-13c-2.5-1.5-6.5-1-9 1Zm0 0v13"/></svg><span>DOCUMENTATION</span></button><label for="language" class="hide">Language</label><select class="language" id="language" aria-label="Language"><option value="en">English</option><option value="fr">Français</option><option value="it">Italiano</option></select></div></header>
 <main class="container">
