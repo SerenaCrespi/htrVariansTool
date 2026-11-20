@@ -75,12 +75,13 @@ units. These diagnostics are not estimates of verified accuracy.
 
 ### Alignment accuracy audit
 
-**Compare methods** reports the percentage and count of reference lines
-with strong textual support. Each proposed counterpart must reach at least
-70% ordered normalized-token Dice similarity. The denominator is the same
-for all methods and includes unmatched textual reference lines. Treat this
-as an automatic indicator. Reformulation can reduce the score and repeated
-phrases can inflate it.
+**Compare methods** scores the actual fragments aligned for each method.
+A reference line counts as strongly supported when at least 70% of its words
+are matched in groups with at least 70% ordered token Dice similarity.
+Groups with a shared core and two or more unmatched words at an edge are
+flagged as possible boundary shifts. Flagged lines are excluded from the
+strongly supported count. This is a textual diagnostic. Genuine additions,
+omissions or rewrites can affect it.
 
 An optional review uses automatically selected blocks of up to 10 lines on
 both witness sides. The review requires ALTO inputs and two available presets.

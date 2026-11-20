@@ -7,22 +7,22 @@ BLOCK_SIZE = 10
 BLOCKS_PER_STRATUM = 4
 
 
-def _key(ref):
+def line_key(ref):
     return (ref.get("alto_file"), ref.get("page"), ref["line"]) if ref.get("line") else None
 
 
-def _items(units):
+def line_locations(units):
     locations = defaultdict(set)
     for index, unit in enumerate(units, 1):
         for ref in unit.get("refs", []):
-            if key := _key(ref):
+            if key := line_key(ref):
                 locations[key].add(index)
     return locations
 
 
 def project(rows, witnesses):
     """Use fragment provenance rather than the bounding range of a word row."""
-    locations = [_items(units) for units in witnesses]
+    locations = [line_locations(units) for units in witnesses]
     links = [[set() for _ in units] for units in witnesses]
     seen = [set(), set()]
     unresolved = [set(), set()]
@@ -33,7 +33,7 @@ def project(rows, witnesses):
             missing = False
             for item in row[field]:
                 for ref in item.get("refs", []):
-                    matches = locations[side].get(_key(ref), ())
+                    matches = locations[side].get(line_key(ref), ())
                     if len(matches) == 1:
                         indexes.update(matches)
                     else:

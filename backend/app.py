@@ -881,23 +881,53 @@ def alignment_evaluation(rows, a, b):
     }
 
 
-def alignment_support(reference, witness, mapping):
-    """Share of textual reference lines with strong ordered lexical support."""
-    right = [normalize(unit["text"]) for unit in witness]
-    positive = total = 0
-    for unit, targets in zip(reference, mapping, strict=True):
-        left = normalize(unit["text"])
-        if not left:
+def alignment_support(reference, rows, *, alto=True):
+    """Evaluate the actual paired fragments against a common reference denominator."""
+    counts = [len(normalize(unit["text"])) for unit in reference]
+    owners = alignment_audit.line_locations(reference)
+    matched_by_line = [0] * len(reference)
+    shifted = set()
+    for row in rows:
+        fragments = [normalize(item["text"]) for item in row["aItems"]]
+        left = [token for fragment in fragments for token in fragment]
+        right = normalize(" ".join(item["text"] for item in row["bItems"]))
+        if not left or not right:
             continue
-        total += 1
-        if not targets:
+        blocks = SequenceMatcher(None, left, right, autojunk=False).get_matching_blocks()[:-1]
+        if not blocks:
             continue
-        counterpart = [token for index in targets for token in right[index - 1]]
-        matches = sum(block.size for block in
-                      SequenceMatcher(None, left, counterpart, autojunk=False).get_matching_blocks())
-        # Ordered token Dice >= 70%. Compare without preset-specific scores.
-        positive += 20 * matches >= 7 * (len(left) + len(counterpart))
+        matches = sum(block.size for block in blocks)
+        first, last = blocks[0], blocks[-1]
+        has_shift = matches >= 3 and 2 * matches >= min(len(left), len(right)) and max(
+            first.a, first.b, len(left) - last.a - last.size, len(right) - last.b - last.size
+        ) >= 2
+        if not has_shift and 20 * matches < 7 * (len(left) + len(right)):
+            continue
+        offset = 0
+        for i, (item, fragment) in enumerate(zip(row["aItems"], fragments)):
+            indexes = {index for ref in item.get("refs", [])
+                       for index in owners.get(alignment_audit.line_key(ref), ())}
+            if not alto and not indexes:
+                span = row["a1"] - row["a0"]
+                if span == len(fragments):
+                    indexes = {row["a0"] + i + 1}
+                elif span == 1:
+                    indexes = {row["a0"] + 1}
+            stop = offset + len(fragment)
+            for index in indexes:
+                if has_shift:
+                    shifted.add(index)
+                elif len(indexes) == 1:
+                    matched_by_line[index - 1] += sum(
+                        max(0, min(stop, block.a + block.size) - max(offset, block.a))
+                        for block in blocks
+                    )
+            offset = stop
+    total = sum(count > 0 for count in counts)
+    positive = sum(count > 0 and i not in shifted and 10 * matched >= 7 * count
+                   for i, (count, matched) in enumerate(zip(counts, matched_by_line), 1))
     return {"positive": positive, "total": total,
+            "shifted": sum(counts[i - 1] > 0 for i in shifted),
             "percent": round(100 * positive / total, 1) if total else None}
 
 
@@ -1076,12 +1106,8 @@ class Handler(SimpleHTTPRequestHandler):
                     evaluated[choice] = _reference_mappings(rows, len(a))
                     if "alto" in payload:
                         audit_methods[choice] = alignment_audit.project(rows, (a, b))
-                        mapping = audit_methods[choice][0]
-                    else:
-                        mapping = [sorted(index + 1 for index in targets)
-                                   for targets in evaluated[choice]]
                     evaluations.append({"preset": choice, "method": method,
-                                        "support": alignment_support(a, b, mapping),
+                                        "support": alignment_support(a, rows, alto="alto" in payload),
                                         **alignment_evaluation(rows, a, b)})
                 disagreements = [
                     i + 1 for i, alternatives in enumerate(zip(*evaluated.values()))

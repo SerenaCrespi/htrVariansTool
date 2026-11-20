@@ -348,14 +348,14 @@ Object.assign(messages.fr,{auditExamples:'Exemples de comparaison',auditExampleH
  auditSample:'Vérification de l’échantillon',auditExact:'Exact',auditPartial:'Partiel',auditWrong:'Incorrect',auditMissing:'Proposition indisponible',
  auditNoProposal:'Aucune correspondance proposée',auditCounts:'Exacts / évaluables',auditSampleCounts:'Résultats de l’échantillon vérifié'});
 Object.assign(messages.en,{supportTitle:'Automatic comparison · {reference} and {name}',supportRate:'Strongly supported lines',
- supportCount:'Lines',
- supportHint:'Each method is scored on the same reference lines. A line counts when its proposed match reaches 70% ordered word overlap. This measures textual support. A genuine rewrite can score low and a repeated phrase can score high.'});
+ supportCount:'Lines',supportShift:'Possible boundary shifts',
+ supportHint:'The score uses the exact fragments each method places together. Lines with a shared core and two or more extra or missing words at an edge are flagged. These indicators describe textual evidence. Genuine variants can also trigger a boundary flag.'});
 Object.assign(messages.it,{supportTitle:'Confronto automatico · {reference} e {name}',supportRate:'Righe con forte riscontro',
- supportCount:'Righe',
- supportHint:'La misura usa le stesse righe di riferimento per tutti i metodi. Una riga conta se la proposta raggiunge il 70% di concordanza fra parole nello stesso ordine. Una riscrittura ben allineata può ottenere un valore basso e una formula ricorrente può ottenerne uno alto.'});
+ supportCount:'Righe',supportShift:'Possibili scarti ai confini',
+ supportHint:'Il punteggio usa i frammenti effettivamente accostati. Se condividono un nucleo ma a un estremo ci sono almeno due parole in più o in meno, la riga viene segnalata. Anche una variante autentica può produrre una segnalazione.'});
 Object.assign(messages.fr,{supportTitle:'Comparaison automatique · {reference} et {name}',supportRate:'Lignes fortement étayées',
- supportCount:'Lignes',
- supportHint:'La mesure porte sur les mêmes lignes de référence pour chaque méthode. Une ligne compte si la proposition atteint 70 % de mots communs dans le même ordre. Une reformulation bien alignée peut avoir un score faible et une formule répétée un score élevé.'});
+ supportCount:'Lignes',supportShift:'Décalages possibles aux limites',
+ supportHint:'Le score utilise les fragments effectivement alignés. Un noyau commun avec au moins deux mots de plus ou de moins à une extrémité déclenche un signalement. Une variante authentique peut aussi être signalée.'});
 let alignmentAudit=null;
 
 function auditStatistics(audit, decisions){
@@ -620,10 +620,10 @@ async function compareAlignmentPresets(){
    ${unavailable?`<td colspan="2">${esc(unavailable)}</td>`:`<td>${percent(score)}</td><td>${percent(coverage)}</td>`}</tr>`);
   const supportRows=evaluations.map(({preset,support,unavailable})=>`<tr>
    <th scope="row">${esc(t(alignmentPresets[preset]))}</th>${unavailable?
-    `<td colspan="2">${esc(unavailable)}</td>`:
-    `<td><strong>${support?percent(support.percent):'—'}</strong></td><td>${support?`${support.positive} / ${support.total}`:'—'}</td>`}</tr>`);
+    `<td colspan="3">${esc(unavailable)}</td>`:
+    `<td><strong>${support?percent(support.percent):'—'}</strong></td><td>${support?`${support.positive} / ${support.total}`:'—'}</td><td>${support?.shifted??'—'}</td>`}</tr>`);
   output.innerHTML=`<h4>${esc(t('supportTitle',{reference:names.A,name}))}</h4>
-   <div class="audit-table"><table><thead><tr>${['auditHeadMethod','supportRate','supportCount'].map(key=>`<th scope="col">${esc(t(key))}</th>`).join('')}</tr></thead>
+   <div class="audit-table"><table><thead><tr>${['auditHeadMethod','supportRate','supportCount','supportShift'].map(key=>`<th scope="col">${esc(t(key))}</th>`).join('')}</tr></thead>
    <tbody>${supportRows.join('')}</tbody></table></div><p class="hint">${esc(t('supportHint'))}</p>
    <details><summary>${esc(t('auditDiagnostics',{name}))}</summary>
    <div class="audit-table"><table><thead><tr>${['auditHeadMethod','auditHeadLexical','auditHeadCoverage'].map(key=>`<th scope="col">${esc(t(key))}</th>`).join('')}</tr></thead>
