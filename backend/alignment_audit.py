@@ -78,4 +78,6 @@ def sample(witnesses, methods, seed=None, plan="standard"):
                                "rows": [{name: mapping[side][i] for name, mapping in methods.items()}
                                         for i in range(start, stop)]})
     return {"seed": seed, "strata": strata, "blocks": blocks, "methods": list(methods),
+            "referenceRows": [{name: mapping[0][i] for name, mapping in methods.items()}
+                              for i in range(len(witnesses[0]))],
             "texts": [[unit["text"] for unit in units] for units in witnesses]}

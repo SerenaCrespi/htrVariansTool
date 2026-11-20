@@ -117,6 +117,15 @@
 .audit-table th,.audit-table td{text-align:start;padding:.45rem;border-bottom:1px solid #ded6cd}
 .audit-table small{font-weight:400}
 @media(max-width:850px){.audit-unit{grid-template-columns:1fr}}
+.audit-comparison{display:block}
+.audit-methods{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:.65rem;margin-block:.7rem}
+.audit-method{border:1px solid #ded6cd;border-radius:.3rem;padding:.65rem;min-width:0}
+.audit-verdict{display:inline-block;margin-top:.45rem;padding:.15rem .4rem;border-radius:.25rem;background:#eee}
+.auditExact{background:#dcefe0;color:#234a2e}
+.auditPartial{background:#fff0c7;color:#624a15}
+.auditWrong{background:#f9e0e0;color:#782b2b}
+.audit-table caption{text-align:start;font-weight:700;padding:.5rem 0}
+.audit-example-navigation input{width:6rem}
 </style></head><body>
 <header class="navbar"><div class="brand brand-lockup" aria-label="VARIANS"><span class="brand-logo-frame"><img class="varians-logo" src="/assets/varians_transparency.png" alt="VARIANS"></span></div><div class="topbar-right"><button type="button" class="documentation-link" id="openUserGuide" aria-haspopup="dialog" aria-controls="userGuide"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C9.5 4.5 5.5 4 3 5.5v13c2.5-1.5 6.5-1 9 1 2.5-2 6.5-2.5 9-1v-13c-2.5-1.5-6.5-1-9 1Zm0 0v13"/></svg><span>DOCUMENTATION</span></button><label for="language" class="hide">Language</label><select class="language" id="language" aria-label="Language"><option value="en">English</option><option value="fr">Français</option><option value="it">Italiano</option></select></div></header>
 <main class="container">

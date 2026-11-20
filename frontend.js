@@ -341,6 +341,18 @@ Object.assign(messages.fr,{
  auditHeadCoverage:'Couverture du texte',auditHeadEstimate:'Exactitude estimée',auditHeadInterval:'Intervalle à 95 %',
  auditPairDetails:'Écarts entre les méthodes',auditMatchesIn:'Propositions dans {name}'
 });
+Object.assign(messages.en,{auditExamples:'Comparison examples',auditExampleHint:'Compare the same reference line across methods. The examples score uses lines with a judgment and a result for every method.',
+ auditExampleSave:'Save example',auditExampleLoad:'Show line',auditNextDisagreement:'Next disagreement',auditSavedExamples:'Saved examples',
+ auditSample:'Sample review',auditExact:'Exact',auditPartial:'Partial',auditWrong:'Incorrect',auditMissing:'Proposal unavailable',
+ auditNoProposal:'No correspondence proposed',auditCounts:'Exact / evaluable',auditSampleCounts:'Reviewed sample results'});
+Object.assign(messages.it,{auditExamples:'Esempi di confronto',auditExampleHint:'Confronta la stessa riga per tutti i metodi. Il conteggio degli esempi usa le righe con un giudizio e un risultato per ogni metodo.',
+ auditExampleSave:'Salva esempio',auditExampleLoad:'Mostra riga',auditNextDisagreement:'Prossimo disaccordo',auditSavedExamples:'Esempi salvati',
+ auditSample:'Verifica del campione',auditExact:'Esatto',auditPartial:'Parziale',auditWrong:'Errato',auditMissing:'Proposta non disponibile',
+ auditNoProposal:'Nessuna corrispondenza proposta',auditCounts:'Esatti / valutabili',auditSampleCounts:'Risultati del campione verificato'});
+Object.assign(messages.fr,{auditExamples:'Exemples de comparaison',auditExampleHint:'Comparez la même ligne pour chaque méthode. Le décompte utilise les lignes avec un jugement et un résultat pour chaque méthode.',
+ auditExampleSave:'Enregistrer l’exemple',auditExampleLoad:'Afficher la ligne',auditNextDisagreement:'Désaccord suivant',auditSavedExamples:'Exemples enregistrés',
+ auditSample:'Vérification de l’échantillon',auditExact:'Exact',auditPartial:'Partiel',auditWrong:'Incorrect',auditMissing:'Proposition indisponible',
+ auditNoProposal:'Aucune correspondance proposée',auditCounts:'Exacts / évaluables',auditSampleCounts:'Résultats de l’échantillon vérifié'});
 let alignmentAudit=null;
 
 function auditStatistics(audit, decisions){
@@ -404,6 +416,12 @@ function validAlignmentAudit(state){
   !Number.isInteger(state.index)||state.index<0||state.index>=blocks.length)return false;
  const targets=(values,side)=>values===null||Array.isArray(values)&&values.every((n,i)=>Number.isInteger(n)&&
   n>(values[i-1]||0)&&n<=texts[1-side].length);
+ const refs=state.audit.referenceRows;
+ if(refs!==undefined&&(!Array.isArray(refs)||refs.length!==texts[0].length||
+  !refs.every(row=>row&&methods.every(m=>targets(row[m],0)))))return false;
+ if(state.exampleIndex!==undefined&&(!Number.isInteger(state.exampleIndex)||!refs?.[state.exampleIndex]))return false;
+ if(state.examples!==undefined&&(!state.examples||typeof state.examples!=='object'||Array.isArray(state.examples)||
+  !Object.entries(state.examples).every(([key,truth])=>/^(0|[1-9]\d*)$/.test(key)&&refs?.[Number(key)]&&targets(truth,0))))return false;
  return strata.every(h=>h&&[0,1].includes(h.side)&&Number.isInteger(h.population)&&h.population>0&&
   Number.isInteger(h.maxSize)&&h.maxSize>=1&&h.maxSize<=10)&&
   blocks.every(b=>b&&Number.isInteger(b.stratum)&&strata[b.stratum]?.side===b.side&&[0,1].includes(b.side)&&
@@ -417,6 +435,99 @@ function validAlignmentAudit(state){
   });
 }
 
+function auditVerdict(proposal,truth){
+ if(proposal===null)return 'auditMissing';
+ if(truth===null)return 'auditUnknown';
+ if(truth===undefined)return '';
+ if(proposal.join(',')===truth.join(','))return 'auditExact';
+ return proposal.some(n=>truth.includes(n))?'auditPartial':'auditWrong';
+}
+function auditCountTable(methods,judgments,title){
+ if(!judgments.length)return '';
+ const comparable=judgments.filter(([row,truth])=>truth!==null&&methods.every(method=>row[method]!==null));
+ const rows=methods.map(method=>{
+  const verdicts=comparable.map(([row,truth])=>auditVerdict(row[method],truth));
+  return `<tr><th scope="row">${esc(t(alignmentPresets[method]))}</th>
+   <td>${verdicts.filter(v=>v==='auditExact').length} / ${comparable.length}</td>
+   <td>${verdicts.filter(v=>v==='auditPartial').length}</td><td>${verdicts.filter(v=>v==='auditWrong').length}</td></tr>`;
+ });
+ return `<div class="audit-table"><table><caption>${esc(t(title))}</caption><thead><tr>
+  ${['auditHeadMethod','auditCounts','auditPartial','auditWrong'].map(k=>`<th scope="col">${esc(t(k))}</th>`).join('')}
+  </tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+}
+function auditUnit(row,truth,opposite,sourceName,sourceText,line,methods,i){
+ const exact=truth?.join(',');
+ const custom=Boolean(exact&&!methods.some(method=>row[method]?.join(',')===exact));
+ const selected=truth===null?'unknown':truth===undefined?'':custom?'custom':exact||'absent';
+ const option=(key,content)=>`<label class="audit-choice"><input type="radio" name="choice${i}" value="${esc(key)}"
+  ${key===selected?'checked':''} required><span>${content}</span></label>`;
+ const columns=methods.map(method=>{
+  const proposal=row[method],verdict=auditVerdict(proposal,truth);
+  const passage=proposal?.map(n=>`<span class="audit-line"><small>${n}</small> ${esc(opposite[n-1])}</span>`).join('');
+  return `<div class="audit-method"><strong>${esc(t(alignmentPresets[method]))}</strong>
+   ${proposal?.length?option(proposal.join(','),passage):`<p>${esc(t(proposal===null?'auditMissing':'auditNoProposal'))}</p>`}
+   ${verdict?`<span class="audit-verdict ${verdict}">${esc(t(verdict))}</span>`:''}</div>`;
+ }).join('');
+ return `<fieldset class="audit-unit audit-comparison">
+  <legend>${esc(t('auditSource',{n:line}))}</legend>
+  <div class="audit-passage"><strong>${esc(sourceName)}</strong><p>${esc(sourceText)}</p></div>
+  <div class="audit-methods">${columns}</div>
+  <div class="audit-actions">${[['absent','auditAbsent'],['custom','auditCustom'],['unknown','auditUnknown']].map(([key,label])=>option(key,esc(t(label)))).join('')}</div>
+  <input class="form-control audit-custom" name="custom${i}" aria-label="${esc(t('auditCustom'))}"
+   placeholder="8, 10-12" value="${custom?esc(exact):''}" ${custom?'':'hidden'}></fieldset>`;
+}
+function auditJudgment(data,i,limit){
+ const choice=data.get('choice'+i);
+ if(choice==='unknown')return null;
+ if(choice==='absent')return [];
+ return auditLines(choice==='custom'?data.get('custom'+i):choice,limit)||undefined;
+}
+function auditCustomInput(event){
+ const choice=event.target;
+ if(choice.type!=='radio')return;
+ const input=choice.closest('fieldset').querySelector('.audit-custom');
+ input.hidden=choice.value!=='custom';
+ if(!input.hidden)input.focus();
+}
+function renderAuditExample(host,state){
+ const {audit,witnessNames}=state;
+ if(!audit.referenceRows){host.textContent='';return}
+ const {referenceRows,texts,methods}=audit;
+ const disagreements=referenceRows.flatMap((row,i)=>new Set(methods.map(method=>JSON.stringify(row[method]))).size>1?[i]:[]);
+ const index=state.exampleIndex??disagreements[0]??0;
+ const examples=state.examples||{};
+ const saved=Object.keys(examples).map(Number).sort((a,b)=>a-b);
+ const next=disagreements.find(i=>i>index)??disagreements[0];
+ host.innerHTML=`<h5>${esc(t('auditExamples'))}</h5><p>${esc(t('auditExampleHint'))}</p>
+  <form class="controls audit-example-navigation"><label>${esc(t('auditSource',{n:''}))}
+   <input class="form-control" name="line" type="number" min="1" max="${referenceRows.length}" required value="${index+1}"></label>
+   <button class="btn btn-outline">${esc(t('auditExampleLoad'))}</button>
+   <button class="btn btn-outline" type="button" data-next-example ${next===undefined||next===index?'disabled':''}>${esc(t('auditNextDisagreement'))}</button></form>
+  <form class="audit-example-judgment">${auditUnit(referenceRows[index],examples[index],texts[1],witnessNames[0],texts[0][index],index+1,methods,0)}
+   <details><summary>${esc(t('auditContext',{name:witnessNames[1]}))}</summary><ol>
+    ${texts[1].map(text=>`<li>${esc(text)}</li>`).join('')}</ol></details>
+   <p role="alert"></p><button class="btn btn-blue">${esc(t('auditExampleSave'))}</button></form>
+  ${auditCountTable(methods,saved.map(i=>[referenceRows[i],examples[i]]),'auditSavedExamples')}
+  <div class="controls">${saved.map(i=>`<button type="button" class="btn btn-outline" data-example="${i}">${esc(t('auditSource',{n:i+1}))}</button>`).join('')}</div>`;
+ const show=i=>{state.exampleIndex=i;renderAuditExample(host,state)};
+ host.querySelector('.audit-example-navigation').onsubmit=event=>{
+  event.preventDefault();
+  show(Number(new FormData(event.currentTarget).get('line'))-1);
+ };
+ host.querySelector('[data-next-example]').onclick=()=>show(next);
+ for(const button of host.querySelectorAll('[data-example]'))button.onclick=()=>show(Number(button.dataset.example));
+ const form=host.querySelector('.audit-example-judgment');
+ form.onchange=auditCustomInput;
+ form.onsubmit=event=>{
+  event.preventDefault();
+  const truth=auditJudgment(new FormData(form),0,texts[1].length);
+  if(truth===undefined){form.querySelector('[role="alert"]').textContent=t('auditBadLines');return}
+  state.examples={...examples,[index]:truth};
+  state.exampleIndex=index;
+  saveBrowserSession();
+  renderAuditExample(host,state);
+ };
+}
 function renderAlignmentAudit(){
  const host=$('alignmentAudit');
  if(!alignmentAudit){host.textContent='';return}
@@ -435,30 +546,17 @@ function renderAlignmentAudit(){
   <details><summary>${esc(t('auditPairDetails'))}</summary>
   <ul>${stats.pairs.map(row=>`<li>${esc(t('auditDifference',{a:label(row.first),b:label(row.second),range:interval(row)}))}</li>`).join('')}</ul>
   <p class="hint">${esc(t('auditScope'))}</p></details>`:`<p>${esc(t('auditWaiting'))}</p>`;
- const choices=block.rows.map(row=>[...new Set(methods.map(method=>row[method]).filter(x=>x?.length).map(x=>x.join(',')))].sort());
  const reviewed=decisions[index],otherName=witnessNames[1-block.side];
  const lineList=(lines,offset=0)=>lines.map((text,i)=>`<li value="${offset+i+1}">${esc(text)}</li>`).join('');
- const units=block.rows.map((_,i)=>{
-  const truth=reviewed?.[i],exact=truth?.join(',');
-  const custom=Boolean(exact&&!choices[i].includes(exact));
-  const selected=truth===null?'unknown':truth===undefined?'':custom?'custom':exact||'absent';
-  const option=(key,content)=>`<label class="audit-choice"><input type="radio" name="choice${i}" value="${esc(key)}"
-   ${key===selected?'checked':''} required><span>${content}</span></label>`;
-  const proposals=choices[i].map(ids=>option(ids,ids.split(',').map(n=>
-   `<span class="audit-line"><small>${esc(n)}</small> ${esc(opposite[Number(n)-1])}</span>`).join(''))).join('');
-  return `<fieldset class="audit-unit">
-   <legend>${esc(t('auditSource',{n:block.start+i+1}))}</legend>
-   <div class="audit-passage"><strong>${esc(witnessNames[block.side])}</strong><p>${esc(texts[block.side][block.start+i])}</p></div>
-   <div class="audit-proposals"><strong>${esc(t('auditMatchesIn',{name:otherName}))}</strong>${proposals}
-    <div class="audit-actions">${['absent','custom','unknown'].map((key,j)=>option(key,esc(t(['auditAbsent','auditCustom','auditUnknown'][j])))).join('')}</div>
-    <input class="form-control audit-custom" name="custom${i}" aria-label="${esc(t('auditCustom'))}"
-     placeholder="8, 10-12" value="${custom?esc(exact):''}" ${custom?'':'hidden'}>
-   </div></fieldset>`;
- }).join('');
+ const units=block.rows.map((row,i)=>auditUnit(row,reviewed?.[i],opposite,witnessNames[block.side],
+  texts[block.side][block.start+i],block.start+i+1,methods,i)).join('');
+ const judgments=blocks.flatMap((sample,i)=>decisions[i]?.map((truth,j)=>[sample.rows[j],truth])||[]);
  const contextStart=Math.max(0,block.start-2),contextEnd=block.start+block.rows.length+2;
  const saveLabel=stats?'auditSave':done+(reviewed?0:1)===blocks.length?'auditSaveLast':'auditSaveNext';
  host.innerHTML=`<h4 tabindex="-1">${esc(t('auditTitle'))}</h4>
-  <div class="audit-outcome"><strong>${esc(t('auditProgress',{done,total:blocks.length}))}</strong>${result}</div>
+  <section data-audit-example></section>
+  <details class="audit-sample" ${audit.referenceRows?'':'open'}><summary>${esc(t('auditSample'))}</summary>
+  <div class="audit-outcome"><strong>${esc(t('auditProgress',{done,total:blocks.length}))}</strong>${result}${auditCountTable(methods,judgments,'auditSampleCounts')}</div>
   <h5>${esc(t('auditBlock',{number:index+1,name:witnessNames[block.side],start:block.start+1,end:block.start+block.rows.length}))}</h5>
   <details><summary>${esc(t('auditContext',{name:witnessNames[block.side]}))}</summary><ol>${lineList(texts[block.side].slice(contextStart,contextEnd),contextStart)}</ol></details>
   <details><summary>${esc(t('auditContext',{name:otherName}))}</summary><ol>${lineList(opposite)}</ol></details>
@@ -467,29 +565,20 @@ function renderAlignmentAudit(){
    <button class="btn btn-blue">${esc(t(saveLabel))}</button>
    <button type="button" class="btn btn-outline" data-step="-1" ${index===0?'disabled':''}>${esc(t('auditBack'))}</button>
    <button type="button" class="btn btn-outline" data-step="1" ${index===blocks.length-1?'disabled':''}>${esc(t('auditNext'))}</button>
-  </div></form>`;
- host.querySelector('form').onchange=event=>{
-  const choice=event.target;
-  if(choice.type!=='radio')return;
-  const input=choice.closest('fieldset').querySelector('.audit-custom');
-  input.hidden=choice.value!=='custom';
-  if(!input.hidden)input.focus();
- };
+  </div></form></details>`;
+ renderAuditExample(host.querySelector('[data-audit-example]'),alignmentAudit);
+ const sample=host.querySelector('.audit-sample');
+ sample.querySelector('form').onchange=auditCustomInput;
  for(const button of host.querySelectorAll('[data-step]'))button.onclick=()=>{
   alignmentAudit.index+=Number(button.dataset.step);
   renderAlignmentAudit();
-  host.querySelector('h4').focus();
+  host.querySelector('.audit-sample').open=true;
+  host.querySelector('.audit-sample summary').focus();
  };
- host.querySelector('form').onsubmit=event=>{
+ sample.querySelector('form').onsubmit=event=>{
   event.preventDefault();
   const form=new FormData(event.currentTarget);
-  const truth=block.rows.map((_,i)=>{
-   const choice=form.get('choice'+i);
-   if(choice==='unknown')return null;
-   if(choice==='absent')return [];
-   const parsed=auditLines(choice==='custom'?form.get('custom'+i):choice,opposite.length);
-   return parsed||undefined;
-  });
+  const truth=block.rows.map((_,i)=>auditJudgment(form,i,opposite.length));
   if(truth.includes(undefined)){
    event.currentTarget.querySelector('[role="alert"]').textContent=t('auditBadLines');
    return;
@@ -499,7 +588,8 @@ function renderAlignmentAudit(){
   if(next>=0)alignmentAudit.index=next;
   saveBrowserSession();
   renderAlignmentAudit();
-  host.querySelector('h4').focus();
+  host.querySelector('.audit-sample').open=true;
+  host.querySelector('.audit-sample summary').focus();
  };
 }
 async function compareAlignmentPresets(){
@@ -531,11 +621,12 @@ async function compareAlignmentPresets(){
    ${disagreements.length?`<details><summary>${esc(t('alignmentDisagreements',{count:disagreements.length}))}</summary><p>${disagreements.join(', ')}</p></details>`:''}</details>`;
   if(audit){
    const same=alignmentAudit?.witnessId===id&&alignmentAudit.signature===signature;
-   if(alignmentAudit&&!same&&Object.keys(alignmentAudit.decisions).length&&!confirm(t('auditReplace')))return;
-   if(!same||!Object.keys(alignmentAudit.decisions).length){
+   if(alignmentAudit&&!same&&(Object.keys(alignmentAudit.decisions).length||Object.keys(alignmentAudit.examples||{}).length)&&!confirm(t('auditReplace')))return;
+   if(!same){
     alignmentAudit={audit,signature,decisions:{},witnessId:id,witnessNames:[names.A,name],index:0};
     saveBrowserSession();
    }
+   alignmentAudit.audit.referenceRows??=audit.referenceRows;
    renderAlignmentAudit();
   }else if(!alignmentAudit){
    $('alignmentAudit').textContent=t('auditUnavailable');
