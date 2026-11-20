@@ -73,34 +73,13 @@ working alignment or touching review decisions. It lists lexical agreement,
 coverage, and reference units for which the methods disagree on counterpart
 units. These diagnostics are not estimates of verified accuracy.
 
-### Alignment accuracy audit
+### Compare methods
 
-**Compare methods** scores the actual fragments aligned for each method.
-A reference line counts as strongly supported when at least 70% of its words
-are matched in groups with at least 70% ordered token Dice similarity.
-Groups with a shared core and two or more unmatched words at an edge are
-flagged as possible boundary shifts. Flagged lines are excluded from the
-strongly supported count. This is a textual diagnostic. Genuine additions,
-omissions or rewrites can affect it.
-
-An optional review uses automatically selected blocks of up to 10 lines on
-both witness sides. The review requires ALTO inputs and two available presets.
-
-For each block, judge the exact matching line numbers. Choose a suggested
-set, enter other numbers or ranges, mark the passage absent, or mark it
-undecidable. The other witness's numbered transcript is available next to the
-judgment form. **Save block** records the decisions in the project. The audit
-uses the full-document comparison as calculated, with the method names hidden
-in the judgment form. Collation decisions stay separate.
-
-Once all sampled blocks are judged, the report compares both witnesses at
-the same resolution, with the same weight per ALTO line. It uses the
-stratified block design to estimate whole-pair accuracy. The simultaneous
-95% intervals use conservative bounded sampling estimates and include the
-possible effects of undecidable judgments and missing provenance. A method
-is singled out only if every paired interval supports its advantage over
-the other available methods. Pick the scope before judging and interpret
-the intervals for that audit. A complete review has no sampling uncertainty.
+The comparison displays the share and count of strongly supported reference
+lines and the number of possible boundary shifts for each preset. A line
+counts when at least 70% of its words match in groups with at least 70%
+ordered token Dice similarity. Groups with a shared core and two or more
+unmatched words at an edge are flagged and excluded from the supported count.
 
 ## Review workflow
 

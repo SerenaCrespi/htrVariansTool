@@ -275,137 +275,19 @@ messages.en['weighted Levenshtein by unit']='Weighted Levenshtein by unit';
 messages.it['weighted Levenshtein by unit']='Levenshtein ponderata per unità';
 messages.fr['weighted Levenshtein by unit']='Levenshtein pondérée par unité';
 const alignmentPresets={auto:'alignmentAuto',semantic:'alignmentSemantic',hybrid:'alignmentHybrid'};
-Object.assign(messages.en,{
- auditReplace:'Replace the saved audit with a new audit for this comparison?',auditTitle:'Alignment accuracy audit',auditUnavailable:'Load ALTO files and enable at least two methods to start an audit.',
- auditProgress:'Reviewed blocks: {done}/{total}',auditBlock:'Block {number} · {name} · lines {start}–{end}',
- auditAbsent:'No counterpart',auditCustom:'Enter other lines',
- auditUnknown:'Undecidable',
- auditSave:'Save block',auditBadLines:'Choose a judgment for every line and check custom line numbers.',
- auditEstimate:'Exact line matches (95% simultaneous intervals)',auditWinner:'Best supported method: {name}',
- auditTie:'The audit does not establish a winner.',auditDifference:'{a} vs {b}: {range} percentage points',
- auditScope:'Both witnesses, equal weight per ALTO line. Intervals account for sampled blocks and undecidable lines.',
- auditSource:'Line {n}',auditBack:'Previous block',auditNext:'Next block'
-});
-Object.assign(messages.it,{
- auditReplace:'Sostituire la verifica salvata con una nuova per questo confronto?',auditTitle:'Verifica della riuscita',auditUnavailable:'Carica gli ALTO e abilita almeno due metodi per avviare la verifica.',
- auditProgress:'Blocchi verificati {done}/{total}',auditBlock:'Blocco {number} · {name} · righe {start}–{end}',
- auditAbsent:'Nessuna corrispondenza',auditCustom:'Indica altre righe',
- auditUnknown:'Indecidibile',
- auditSave:'Salva il blocco',auditBadLines:'Assegna un giudizio a ogni riga e controlla i numeri inseriti.',
- auditEstimate:'Accostamenti esatti per riga (intervalli simultanei al 95%)',auditWinner:'Metodo meglio supportato · {name}',
- auditTie:'La verifica lascia aperta la scelta del metodo.',auditDifference:'{a} e {b} · {range} punti percentuali',
- auditScope:'Entrambi i testimoni, con lo stesso peso per riga ALTO. Gli intervalli tengono conto del campionamento e dei casi indecidibili.',
- auditSource:'Riga {n}',auditBack:'Blocco precedente',auditNext:'Blocco successivo'
-});
-Object.assign(messages.fr,{
- auditReplace:'Remplacer la vérification enregistrée par une nouvelle pour cette comparaison ?',auditTitle:'Vérification de l’alignement',auditUnavailable:'Chargez les fichiers ALTO et activez au moins deux méthodes.',
- auditProgress:'Blocs vérifiés {done}/{total}',auditBlock:'Bloc {number} · {name} · lignes {start}–{end}',
- auditAbsent:'Aucune correspondance',auditCustom:'Indiquer d’autres lignes',
- auditUnknown:'Indécidable',
- auditSave:'Enregistrer le bloc',auditBadLines:'Vérifiez les jugements et les numéros de ligne.',
- auditEstimate:'Correspondances exactes par ligne (intervalles simultanés à 95 %)',auditWinner:'Méthode la mieux étayée · {name}',
- auditTie:'La vérification ne permet pas de départager les méthodes.',auditDifference:'{a} et {b} · {range} points de pourcentage',
- auditScope:'Les deux témoins, avec le même poids par ligne ALTO. Les intervalles tiennent compte de l’échantillonnage et des cas indécidables.',
- auditSource:'Ligne {n}',auditBack:'Bloc précédent',auditNext:'Bloc suivant'
-});
-Object.assign(messages.en,{
- auditContext:'Context in {name}',
- auditSaveNext:'Save and continue',auditSaveLast:'Save and show results',
- auditWaiting:'The comparison is ready. Review the blocks below to see which method fits these witnesses best.',
- auditInstructions:'Click the matching passage for each line. If none of the suggestions fits, you can enter other lines or mark the case as undecidable.',
- auditDiagnostics:'Automatic diagnostics for {name}',auditHeadMethod:'Method',auditHeadLexical:'Word overlap',
- auditHeadCoverage:'Text coverage',auditHeadEstimate:'Estimated accuracy',auditHeadInterval:'95% range',
- auditPairDetails:'Differences between methods',auditMatchesIn:'Proposals in {name}'
-});
-Object.assign(messages.it,{
- auditContext:'Contesto in {name}',
- auditSaveNext:'Salva e continua',auditSaveLast:'Salva e mostra l’esito',
- auditWaiting:'Il confronto è pronto. Verifica i blocchi qui sotto per vedere quale metodo funziona meglio su questi testimoni.',
- auditInstructions:'Per ogni riga, clicca sul passaggio corrispondente. Puoi indicare altre righe o segnare un caso come indecidibile.',
- auditDiagnostics:'Diagnostica automatica per {name}',auditHeadMethod:'Metodo',auditHeadLexical:'Parole in comune',
- auditHeadCoverage:'Copertura del testo',auditHeadEstimate:'Accuratezza stimata',auditHeadInterval:'Intervallo al 95%',
- auditPairDetails:'Differenze fra i metodi',auditMatchesIn:'Proposte in {name}'
-});
-Object.assign(messages.fr,{
- auditContext:'Contexte dans {name}',
- auditSaveNext:'Enregistrer et continuer',auditSaveLast:'Enregistrer et afficher le résultat',
- auditWaiting:'La comparaison est prête. Vérifiez les blocs ci-dessous pour départager les méthodes sur ces témoins.',
- auditInstructions:'Pour chaque ligne, cliquez sur le passage correspondant. Vous pouvez indiquer d’autres lignes ou marquer un cas comme indécidable.',
- auditDiagnostics:'Indicateurs automatiques pour {name}',auditHeadMethod:'Méthode',auditHeadLexical:'Mots en commun',
- auditHeadCoverage:'Couverture du texte',auditHeadEstimate:'Exactitude estimée',auditHeadInterval:'Intervalle à 95 %',
- auditPairDetails:'Écarts entre les méthodes',auditMatchesIn:'Propositions dans {name}'
-});
-Object.assign(messages.en,{auditExamples:'Comparison examples',auditExampleHint:'Compare the same reference line across methods. The examples score uses lines with a judgment and a result for every method.',
- auditExampleSave:'Save example',auditExampleLoad:'Show line',auditNextDisagreement:'Next disagreement',auditSavedExamples:'Saved examples',
- auditSample:'Sample review',auditExact:'Exact',auditPartial:'Partial',auditWrong:'Incorrect',auditMissing:'Proposal unavailable',
- auditNoProposal:'No correspondence proposed',auditCounts:'Exact / evaluable',auditSampleCounts:'Reviewed sample results'});
-Object.assign(messages.it,{auditExamples:'Esempi di confronto',auditExampleHint:'Confronta la stessa riga per tutti i metodi. Il conteggio degli esempi usa le righe con un giudizio e un risultato per ogni metodo.',
- auditExampleSave:'Salva esempio',auditExampleLoad:'Mostra riga',auditNextDisagreement:'Prossimo disaccordo',auditSavedExamples:'Esempi salvati',
- auditSample:'Verifica del campione',auditExact:'Esatto',auditPartial:'Parziale',auditWrong:'Errato',auditMissing:'Proposta non disponibile',
- auditNoProposal:'Nessuna corrispondenza proposta',auditCounts:'Esatti / valutabili',auditSampleCounts:'Risultati del campione verificato'});
-Object.assign(messages.fr,{auditExamples:'Exemples de comparaison',auditExampleHint:'Comparez la même ligne pour chaque méthode. Le décompte utilise les lignes avec un jugement et un résultat pour chaque méthode.',
- auditExampleSave:'Enregistrer l’exemple',auditExampleLoad:'Afficher la ligne',auditNextDisagreement:'Désaccord suivant',auditSavedExamples:'Exemples enregistrés',
- auditSample:'Vérification de l’échantillon',auditExact:'Exact',auditPartial:'Partiel',auditWrong:'Incorrect',auditMissing:'Proposition indisponible',
- auditNoProposal:'Aucune correspondance proposée',auditCounts:'Exacts / évaluables',auditSampleCounts:'Résultats de l’échantillon vérifié'});
-Object.assign(messages.en,{supportTitle:'Automatic comparison · {reference} and {name}',supportRate:'Strongly supported lines',
- supportCount:'Lines',supportShift:'Possible boundary shifts',
- supportHint:'The score uses the exact fragments each method places together. Lines with a shared core and two or more extra or missing words at an edge are flagged. These indicators describe textual evidence. Genuine variants can also trigger a boundary flag.'});
-Object.assign(messages.it,{supportTitle:'Confronto automatico · {reference} e {name}',supportRate:'Righe con forte riscontro',
- supportCount:'Righe',supportShift:'Possibili scarti ai confini',
- supportHint:'Il punteggio usa i frammenti effettivamente accostati. Se condividono un nucleo ma a un estremo ci sono almeno due parole in più o in meno, la riga viene segnalata. Anche una variante autentica può produrre una segnalazione.'});
-Object.assign(messages.fr,{supportTitle:'Comparaison automatique · {reference} et {name}',supportRate:'Lignes fortement étayées',
- supportCount:'Lignes',supportShift:'Décalages possibles aux limites',
- supportHint:'Le score utilise les fragments effectivement alignés. Un noyau commun avec au moins deux mots de plus ou de moins à une extrémité déclenche un signalement. Une variante authentique peut aussi être signalée.'});
+Object.assign(messages.en,{supportTitle:'{reference} and {name}',supportMethod:'Method',
+ supportRate:'Strongly supported lines',supportShift:'Possible boundary shifts',
+ supportHint:'The percentage counts reference lines with at least 70% of their words matched in strongly overlapping fragments.',
+ supportShiftHint:'Two or more unmatched words at an edge of a shared passage flag a possible shift and exclude that line from the percentage.'});
+Object.assign(messages.it,{supportTitle:'{reference} e {name}',supportMethod:'Metodo',
+ supportRate:'Righe con forte riscontro',supportShift:'Possibili scarti ai confini',
+ supportHint:'La percentuale conta le righe di riferimento con almeno il 70% delle parole in comune nei frammenti effettivamente accostati.',
+ supportShiftHint:'Due o più parole fuori corrispondenza a un estremo di un passaggio comune segnalano un possibile scarto ed escludono la riga dalla percentuale.'});
+Object.assign(messages.fr,{supportTitle:'{reference} et {name}',supportMethod:'Méthode',
+ supportRate:'Lignes fortement étayées',supportShift:'Décalages possibles aux limites',
+ supportHint:'Le pourcentage compte les lignes de référence dont au moins 70 % des mots se retrouvent dans les fragments effectivement alignés.',
+ supportShiftHint:'Au moins deux mots sans correspondance à une extrémité d’un passage commun signalent un décalage possible et excluent la ligne du pourcentage.'});
 let alignmentAudit=null;
-
-function auditStatistics(audit, decisions){
- const {blocks,strata,methods,texts}=audit;
- const total=texts[0].length+texts[1].length;
- const comparisons=methods.length*(methods.length+1)/2;
- function estimate(first,second){
-  let lower=second?0:total/2,upper=lower,radiusTerm=0,missingLineBound=0;
-  strata.forEach((stratum,h)=>{
-   const selected=blocks.map((block,i)=>[block,decisions[i]]).filter(([block])=>block.stratum===h);
-   const weight=stratum.population/selected.length;
-   const value=(proposal,truth)=>proposal===null||truth===null?[0,1]:
-    [Number(proposal.join(',')===truth.join(',')),Number(proposal.join(',')===truth.join(','))];
-   selected.forEach(([block,truth])=>block.rows.forEach((row,i)=>{
-    if(second&&row[first]!==null&&row[second]!==null&&row[first].join(',')===row[second].join(','))return;
-    const a=value(row[first],truth[i]);
-    const b=second?value(row[second],truth[i]):[.5,.5];
-    lower+=weight*(a[0]-b[1]);
-    upper+=weight*(a[1]-b[0]);
-   }));
-   if(selected.length<stratum.population){
-    const span=(second?2:1)*stratum.maxSize;
-    radiusTerm+=stratum.population**2*span**2/selected.length;
-    missingLineBound+=span*(stratum.population-selected.length);
-   }
-  });
-  // Hoeffding for bounded block totals sampled without replacement, with
-  // Bonferroni across method scores and paired differences. Census strata
-  // have zero sampling error. The finite bounds also cover unknown judgments.
-  const radius=Math.min(missingLineBound,Math.sqrt(radiusTerm*Math.log(2*comparisons/.05)/2));
-  return {low:Math.max(second?-100:0,100*(lower-radius)/total),high:Math.min(100,100*(upper+radius)/total),
-   point:lower===upper?Math.min(100,Math.max(second?-100:0,100*lower/total)):null};
- }
- const scores=methods.map(method=>({method,...estimate(method)}));
- const pairs=methods.flatMap((first,i)=>methods.slice(i+1).map(second=>({first,second,...estimate(first,second)})));
- const winner=methods.find(method=>pairs.filter(p=>p.first===method||p.second===method)
-  .every(p=>p.first===method?p.low>0:p.high<0));
- return {scores,pairs,winner};
-}
-
-function auditLines(raw,limit){
- if(!/^\s*\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*\s*$/.test(raw))return null;
- const values=new Set();
- for(const part of raw.split(',')){
-  const [start,end=start]=part.split('-').map(Number);
-  if(start<1||end<start||end>limit)return null;
-  for(let i=start;i<=end;i++)values.add(i);
- }
- return [...values].sort((a,b)=>a-b);
-}
 
 function validAlignmentAudit(state){
  if(!state||typeof state!=='object'||!state.audit||!state.decisions||
@@ -438,163 +320,6 @@ function validAlignmentAudit(state){
   });
 }
 
-function auditVerdict(proposal,truth){
- if(proposal===null)return 'auditMissing';
- if(truth===null)return 'auditUnknown';
- if(truth===undefined)return '';
- if(proposal.join(',')===truth.join(','))return 'auditExact';
- return proposal.some(n=>truth.includes(n))?'auditPartial':'auditWrong';
-}
-function auditCountTable(methods,judgments,title){
- if(!judgments.length)return '';
- const comparable=judgments.filter(([row,truth])=>truth!==null&&methods.every(method=>row[method]!==null));
- const rows=methods.map(method=>{
-  const verdicts=comparable.map(([row,truth])=>auditVerdict(row[method],truth));
-  return `<tr><th scope="row">${esc(t(alignmentPresets[method]))}</th>
-   <td>${verdicts.filter(v=>v==='auditExact').length} / ${comparable.length}</td>
-   <td>${verdicts.filter(v=>v==='auditPartial').length}</td><td>${verdicts.filter(v=>v==='auditWrong').length}</td></tr>`;
- });
- return `<div class="audit-table"><table><caption>${esc(t(title))}</caption><thead><tr>
-  ${['auditHeadMethod','auditCounts','auditPartial','auditWrong'].map(k=>`<th scope="col">${esc(t(k))}</th>`).join('')}
-  </tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
-}
-function auditUnit(row,truth,opposite,sourceName,sourceText,line,methods,i){
- const exact=truth?.join(',');
- const custom=Boolean(exact&&!methods.some(method=>row[method]?.join(',')===exact));
- const selected=truth===null?'unknown':truth===undefined?'':custom?'custom':exact||'absent';
- const option=(key,content)=>`<label class="audit-choice"><input type="radio" name="choice${i}" value="${esc(key)}"
-  ${key===selected?'checked':''} required><span>${content}</span></label>`;
- const columns=methods.map(method=>{
-  const proposal=row[method],verdict=auditVerdict(proposal,truth);
-  const passage=proposal?.map(n=>`<span class="audit-line"><small>${n}</small> ${esc(opposite[n-1])}</span>`).join('');
-  return `<div class="audit-method"><strong>${esc(t(alignmentPresets[method]))}</strong>
-   ${proposal?.length?option(proposal.join(','),passage):`<p>${esc(t(proposal===null?'auditMissing':'auditNoProposal'))}</p>`}
-   ${verdict?`<span class="audit-verdict ${verdict}">${esc(t(verdict))}</span>`:''}</div>`;
- }).join('');
- return `<fieldset class="audit-unit audit-comparison">
-  <legend>${esc(t('auditSource',{n:line}))}</legend>
-  <div class="audit-passage"><strong>${esc(sourceName)}</strong><p>${esc(sourceText)}</p></div>
-  <div class="audit-methods">${columns}</div>
-  <div class="audit-actions">${[['absent','auditAbsent'],['custom','auditCustom'],['unknown','auditUnknown']].map(([key,label])=>option(key,esc(t(label)))).join('')}</div>
-  <input class="form-control audit-custom" name="custom${i}" aria-label="${esc(t('auditCustom'))}"
-   placeholder="8, 10-12" value="${custom?esc(exact):''}" ${custom?'':'hidden'}></fieldset>`;
-}
-function auditJudgment(data,i,limit){
- const choice=data.get('choice'+i);
- if(choice==='unknown')return null;
- if(choice==='absent')return [];
- return auditLines(choice==='custom'?data.get('custom'+i):choice,limit)||undefined;
-}
-function auditCustomInput(event){
- const choice=event.target;
- if(choice.type!=='radio')return;
- const input=choice.closest('fieldset').querySelector('.audit-custom');
- input.hidden=choice.value!=='custom';
- if(!input.hidden)input.focus();
-}
-function renderAuditExample(host,state){
- const {audit,witnessNames}=state;
- if(!audit.referenceRows){host.textContent='';return}
- const {referenceRows,texts,methods}=audit;
- const disagreements=referenceRows.flatMap((row,i)=>new Set(methods.map(method=>JSON.stringify(row[method]))).size>1?[i]:[]);
- const index=state.exampleIndex??disagreements[0]??0;
- const examples=state.examples||{};
- const saved=Object.keys(examples).map(Number).sort((a,b)=>a-b);
- const next=disagreements.find(i=>i>index)??disagreements[0];
- host.innerHTML=`<h5>${esc(t('auditExamples'))}</h5><p>${esc(t('auditExampleHint'))}</p>
-  <form class="controls audit-example-navigation"><label>${esc(t('auditSource',{n:''}))}
-   <input class="form-control" name="line" type="number" min="1" max="${referenceRows.length}" required value="${index+1}"></label>
-   <button class="btn btn-outline">${esc(t('auditExampleLoad'))}</button>
-   <button class="btn btn-outline" type="button" data-next-example ${next===undefined||next===index?'disabled':''}>${esc(t('auditNextDisagreement'))}</button></form>
-  <form class="audit-example-judgment">${auditUnit(referenceRows[index],examples[index],texts[1],witnessNames[0],texts[0][index],index+1,methods,0)}
-   <details><summary>${esc(t('auditContext',{name:witnessNames[1]}))}</summary><ol>
-    ${texts[1].map(text=>`<li>${esc(text)}</li>`).join('')}</ol></details>
-   <p role="alert"></p><button class="btn btn-blue">${esc(t('auditExampleSave'))}</button></form>
-  ${auditCountTable(methods,saved.map(i=>[referenceRows[i],examples[i]]),'auditSavedExamples')}
-  <div class="controls">${saved.map(i=>`<button type="button" class="btn btn-outline" data-example="${i}">${esc(t('auditSource',{n:i+1}))}</button>`).join('')}</div>`;
- const show=i=>{state.exampleIndex=i;renderAuditExample(host,state)};
- host.querySelector('.audit-example-navigation').onsubmit=event=>{
-  event.preventDefault();
-  show(Number(new FormData(event.currentTarget).get('line'))-1);
- };
- host.querySelector('[data-next-example]').onclick=()=>show(next);
- for(const button of host.querySelectorAll('[data-example]'))button.onclick=()=>show(Number(button.dataset.example));
- const form=host.querySelector('.audit-example-judgment');
- form.onchange=auditCustomInput;
- form.onsubmit=event=>{
-  event.preventDefault();
-  const truth=auditJudgment(new FormData(form),0,texts[1].length);
-  if(truth===undefined){form.querySelector('[role="alert"]').textContent=t('auditBadLines');return}
-  state.examples={...examples,[index]:truth};
-  state.exampleIndex=index;
-  saveBrowserSession();
-  renderAuditExample(host,state);
- };
-}
-function renderAlignmentAudit(){
- const host=$('alignmentAudit');
- if(!alignmentAudit){host.textContent='';return}
- const {audit,decisions,witnessNames,index}=alignmentAudit;
- const {blocks,texts,methods}=audit;
- const block=blocks[index],opposite=texts[1-block.side];
- const done=Object.keys(decisions).length;
- const stats=done===blocks.length?auditStatistics(audit,decisions):null;
- const format=value=>new Intl.NumberFormat(language,{maximumFractionDigits:1}).format(value);
- const interval=({low,high})=>`${format(low)} – ${format(high)}`;
- const label=method=>t(alignmentPresets[method]);
- const headings=keys=>keys.map(key=>`<th scope="col">${esc(t(key))}</th>`).join('');
- const result=stats?`<p><strong>${esc(t(stats.winner?'auditWinner':'auditTie',{name:stats.winner?label(stats.winner):''}))}</strong></p>
-  <div class="audit-table"><table><thead><tr>${headings(['auditHeadMethod','auditHeadEstimate','auditHeadInterval'])}</tr></thead>
-  <tbody>${stats.scores.map(row=>`<tr><th scope="row">${esc(label(row.method))}</th><td>${row.point===null?'—':format(row.point)+'%'}</td><td>${interval(row)}%</td></tr>`).join('')}</tbody></table></div>
-  <details><summary>${esc(t('auditPairDetails'))}</summary>
-  <ul>${stats.pairs.map(row=>`<li>${esc(t('auditDifference',{a:label(row.first),b:label(row.second),range:interval(row)}))}</li>`).join('')}</ul>
-  <p class="hint">${esc(t('auditScope'))}</p></details>`:`<p>${esc(t('auditWaiting'))}</p>`;
- const reviewed=decisions[index],otherName=witnessNames[1-block.side];
- const lineList=(lines,offset=0)=>lines.map((text,i)=>`<li value="${offset+i+1}">${esc(text)}</li>`).join('');
- const units=block.rows.map((row,i)=>auditUnit(row,reviewed?.[i],opposite,witnessNames[block.side],
-  texts[block.side][block.start+i],block.start+i+1,methods,i)).join('');
- const judgments=blocks.flatMap((sample,i)=>decisions[i]?.map((truth,j)=>[sample.rows[j],truth])||[]);
- const contextStart=Math.max(0,block.start-2),contextEnd=block.start+block.rows.length+2;
- const saveLabel=stats?'auditSave':done+(reviewed?0:1)===blocks.length?'auditSaveLast':'auditSaveNext';
- host.innerHTML=`<h4 tabindex="-1">${esc(t('auditTitle'))}</h4>
-  <section data-audit-example></section>
-  <details class="audit-sample" ${audit.referenceRows?'':'open'}><summary>${esc(t('auditSample'))}</summary>
-  <div class="audit-outcome"><strong>${esc(t('auditProgress',{done,total:blocks.length}))}</strong>${result}${auditCountTable(methods,judgments,'auditSampleCounts')}</div>
-  <h5>${esc(t('auditBlock',{number:index+1,name:witnessNames[block.side],start:block.start+1,end:block.start+block.rows.length}))}</h5>
-  <details><summary>${esc(t('auditContext',{name:witnessNames[block.side]}))}</summary><ol>${lineList(texts[block.side].slice(contextStart,contextEnd),contextStart)}</ol></details>
-  <details><summary>${esc(t('auditContext',{name:otherName}))}</summary><ol>${lineList(opposite)}</ol></details>
-  <p class="hint">${esc(t('auditInstructions'))}</p>
-  <form>${units}<p role="alert"></p><div class="controls">
-   <button class="btn btn-blue">${esc(t(saveLabel))}</button>
-   <button type="button" class="btn btn-outline" data-step="-1" ${index===0?'disabled':''}>${esc(t('auditBack'))}</button>
-   <button type="button" class="btn btn-outline" data-step="1" ${index===blocks.length-1?'disabled':''}>${esc(t('auditNext'))}</button>
-  </div></form></details>`;
- renderAuditExample(host.querySelector('[data-audit-example]'),alignmentAudit);
- const sample=host.querySelector('.audit-sample');
- sample.querySelector('form').onchange=auditCustomInput;
- for(const button of host.querySelectorAll('[data-step]'))button.onclick=()=>{
-  alignmentAudit.index+=Number(button.dataset.step);
-  renderAlignmentAudit();
-  host.querySelector('.audit-sample').open=true;
-  host.querySelector('.audit-sample summary').focus();
- };
- sample.querySelector('form').onsubmit=event=>{
-  event.preventDefault();
-  const form=new FormData(event.currentTarget);
-  const truth=block.rows.map((_,i)=>auditJudgment(form,i,opposite.length));
-  if(truth.includes(undefined)){
-   event.currentTarget.querySelector('[role="alert"]').textContent=t('auditBadLines');
-   return;
-  }
-  decisions[index]=truth;
-  const next=blocks.findIndex((_,i)=>!Object.hasOwn(decisions,i));
-  if(next>=0)alignmentAudit.index=next;
-  saveBrowserSession();
-  renderAlignmentAudit();
-  host.querySelector('.audit-sample').open=true;
-  host.querySelector('.audit-sample summary').focus();
- };
-}
 async function compareAlignmentPresets(){
  const output=$('alignmentEvaluation'),button=$('compareAlignmentBtn');
  if(button.disabled)return;
@@ -612,35 +337,19 @@ async function compareAlignmentPresets(){
  button.disabled=true;
  output.textContent=t('comparingAlignment',{name});
  try{
-  const {evaluations,disagreements,audit,auditSignature:signature}=await requestAlignment({...payload,compare_presets:true},()=>{});
+  const {evaluations}=await requestAlignment({...payload,compare_presets:true,summary_only:true},()=>{});
   if(!current()){output.textContent='';return}
-  const percent=value=>value===null?'—':new Intl.NumberFormat(language,{style:'percent',maximumFractionDigits:1}).format(value/100);
-  const items=evaluations.map(({preset,method,score,coverage,unavailable})=>`<tr>
-   <th scope="row">${esc(t(alignmentPresets[preset]))}${method?`<small>${esc(t(method))}</small>`:''}</th>
-   ${unavailable?`<td colspan="2">${esc(unavailable)}</td>`:`<td>${percent(score)}</td><td>${percent(coverage)}</td>`}</tr>`);
-  const supportRows=evaluations.map(({preset,support,unavailable})=>`<tr>
+  const percent=new Intl.NumberFormat(language,{style:'percent',maximumFractionDigits:1});
+  const rows=evaluations.map(({preset,support,unavailable})=>`<tr>
    <th scope="row">${esc(t(alignmentPresets[preset]))}</th>${unavailable?
-    `<td colspan="3">${esc(unavailable)}</td>`:
-    `<td><strong>${support?percent(support.percent):'—'}</strong></td><td>${support?`${support.positive} / ${support.total}`:'—'}</td><td>${support?.shifted??'—'}</td>`}</tr>`);
-  output.innerHTML=`<h4>${esc(t('supportTitle',{reference:names.A,name}))}</h4>
-   <div class="audit-table"><table><thead><tr>${['auditHeadMethod','supportRate','supportCount','supportShift'].map(key=>`<th scope="col">${esc(t(key))}</th>`).join('')}</tr></thead>
-   <tbody>${supportRows.join('')}</tbody></table></div><p class="hint">${esc(t('supportHint'))}</p>
-   <details><summary>${esc(t('auditDiagnostics',{name}))}</summary>
-   <div class="audit-table"><table><thead><tr>${['auditHeadMethod','auditHeadLexical','auditHeadCoverage'].map(key=>`<th scope="col">${esc(t(key))}</th>`).join('')}</tr></thead>
-   <tbody>${items.join('')}</tbody></table></div><p class="hint">${esc(t('alignmentEvaluationHint'))}</p>
-   ${disagreements.length?`<details><summary>${esc(t('alignmentDisagreements',{count:disagreements.length}))}</summary><p>${disagreements.join(', ')}</p></details>`:''}</details>`;
-  if(audit){
-   const same=alignmentAudit?.witnessId===id&&alignmentAudit.signature===signature;
-   if(alignmentAudit&&!same&&(Object.keys(alignmentAudit.decisions).length||Object.keys(alignmentAudit.examples||{}).length)&&!confirm(t('auditReplace')))return;
-   if(!same){
-    alignmentAudit={audit,signature,decisions:{},witnessId:id,witnessNames:[names.A,name],index:0};
-    saveBrowserSession();
-   }
-   alignmentAudit.audit.referenceRows??=audit.referenceRows;
-   renderAlignmentAudit();
-  }else if(!alignmentAudit){
-   $('alignmentAudit').textContent=t('auditUnavailable');
-  }
+    `<td colspan="2">${esc(unavailable)}</td>`:
+    `<td>${support.total?`${support.positive}/${support.total} <strong>(${percent.format(support.percent/100)})</strong>`:'—'}</td>
+    <td>${support.shifted}</td>`}</tr>`);
+  output.innerHTML=`<div class="audit-table"><table>
+   <caption>${esc(t('supportTitle',{reference:names.A,name}))}</caption>
+   <thead><tr>${['supportMethod','supportRate','supportShift'].map(key=>`<th scope="col">${esc(t(key))}</th>`).join('')}</tr></thead>
+   <tbody>${rows.join('')}</tbody></table></div>
+   <p class="hint">${esc(t('supportHint'))}<br>${esc(t('supportShiftHint'))}</p>`;
  }catch(error){output.textContent=current()?t('error')+error.message:''}
  finally{button.disabled=false}
 }
@@ -1620,7 +1329,6 @@ function restoreProject(s){
  genreRanges=s.genreRanges||[];uniformGenre=s.genre;titleLines=new Set(s.titleLines||[]);
  language=s.language;$('language').value=language;viewFilter=s.viewFilter;$('resultFilter').value=viewFilter;$('genre').value=s.genre;
  setLanguage(language);
- renderAlignmentAudit();
  for(const id of witnessIds){$(`iiif${id}`).value=s.iiif[id];$(`dossierName${id}`).dataset.userEdited='true'}
  if(Object.keys(pairResults).length)activatePair(activeWitness,false);
  else{$('alignSummary').textContent='';$('totalBadge').textContent=t('unitCount',{n:0,total:0});$('pendingBadge').textContent=t('pending',{n:0,total:0});$('keptBadge').textContent=t('retained',{n:0})}

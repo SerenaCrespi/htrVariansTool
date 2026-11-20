@@ -1080,8 +1080,9 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("Unknown alignment preset.")
             line_available = len(a) * len(b) <= MAX_EXPERIMENT_LINE_CELLS
             if payload.get("compare_presets") is True:
+                summary_only = payload.get("summary_only") is True
                 plan = payload.get("audit_plan", "standard")
-                if plan not in ("standard", "extended", "complete"):
+                if not summary_only and plan not in ("standard", "extended", "complete"):
                     raise ValueError("Unknown audit sample plan.")
                 progress(1)
                 evaluations = []
@@ -1103,21 +1104,24 @@ class Handler(SimpleHTTPRequestHandler):
                         unavailable = str(exc)
                         evaluations.append({"preset": choice, "unavailable": unavailable})
                         continue
-                    evaluated[choice] = _reference_mappings(rows, len(a))
-                    if "alto" in payload:
-                        audit_methods[choice] = alignment_audit.project(rows, (a, b))
-                    evaluations.append({"preset": choice, "method": method,
-                                        "support": alignment_support(a, rows, alto="alto" in payload),
-                                        **alignment_evaluation(rows, a, b)})
-                disagreements = [
-                    i + 1 for i, alternatives in enumerate(zip(*evaluated.values()))
-                    if any(mapping != alternatives[0] for mapping in alternatives[1:])
-                ]
-                audit = alignment_audit.sample((a, b), audit_methods, plan=plan)
-                signature = sha256(json.dumps([payload["alto"], audit_methods, plan],
-                                              ensure_ascii=False).encode()).hexdigest() if audit else None
-                result = {"evaluations": evaluations, "disagreements": disagreements,
-                          "audit": audit, "auditSignature": signature}
+                    evaluation = {"preset": choice,
+                                  "support": alignment_support(a, rows, alto="alto" in payload)}
+                    if not summary_only:
+                        evaluated[choice] = _reference_mappings(rows, len(a))
+                        if "alto" in payload:
+                            audit_methods[choice] = alignment_audit.project(rows, (a, b))
+                        evaluation.update(method=method, **alignment_evaluation(rows, a, b))
+                    evaluations.append(evaluation)
+                result = {"evaluations": evaluations}
+                if not summary_only:
+                    disagreements = [
+                        i + 1 for i, alternatives in enumerate(zip(*evaluated.values()))
+                        if any(mapping != alternatives[0] for mapping in alternatives[1:])
+                    ]
+                    audit = alignment_audit.sample((a, b), audit_methods, plan=plan)
+                    signature = sha256(json.dumps([payload["alto"], audit_methods, plan],
+                                                  ensure_ascii=False).encode()).hexdigest() if audit else None
+                    result.update(disagreements=disagreements, audit=audit, auditSignature=signature)
                 if streaming:
                     send_event({"result": result})
                 else:
