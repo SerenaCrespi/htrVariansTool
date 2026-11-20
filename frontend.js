@@ -276,14 +276,17 @@ messages.it['weighted Levenshtein by unit']='Levenshtein ponderata per unità';
 messages.fr['weighted Levenshtein by unit']='Levenshtein pondérée par unité';
 const alignmentPresets={auto:'alignmentAuto',semantic:'alignmentSemantic',hybrid:'alignmentHybrid'};
 Object.assign(messages.en,{supportTitle:'{reference} and {name}',supportMethod:'Method',
+ supportSemantic:'Cosine similarity of multilingual-e5-small embeddings (ONNX INT8)', supportHybrid:'65% E5 cosine similarity + 35% lexical similarity',
  supportRate:'Strongly supported lines',supportShift:'Possible boundary shifts',
  supportHint:'The percentage counts reference lines with at least 70% of their words matched in strongly overlapping fragments.',
  supportShiftHint:'Two or more unmatched words at an edge of a shared passage flag a possible shift and exclude that line from the percentage.'});
 Object.assign(messages.it,{supportTitle:'{reference} e {name}',supportMethod:'Metodo',
+ supportSemantic:'Similarità coseno degli embedding multilingual-e5-small (ONNX INT8)', supportHybrid:'65% similarità coseno E5 + 35% somiglianza lessicale',
  supportRate:'Righe con forte riscontro',supportShift:'Possibili scarti ai confini',
  supportHint:'La percentuale conta le righe di riferimento con almeno il 70% delle parole in comune nei frammenti effettivamente accostati.',
  supportShiftHint:'Due o più parole fuori corrispondenza a un estremo di un passaggio comune segnalano un possibile scarto ed escludono la riga dalla percentuale.'});
 Object.assign(messages.fr,{supportTitle:'{reference} et {name}',supportMethod:'Méthode',
+ supportSemantic:'Similarité cosinus des embeddings multilingual-e5-small (ONNX INT8)', supportHybrid:'65 % similarité cosinus E5 + 35 % similarité lexicale',
  supportRate:'Lignes fortement étayées',supportShift:'Décalages possibles aux limites',
  supportHint:'Le pourcentage compte les lignes de référence dont au moins 70 % des mots se retrouvent dans les fragments effectivement alignés.',
  supportShiftHint:'Au moins deux mots sans correspondance à une extrémité d’un passage commun signalent un décalage possible et excluent la ligne du pourcentage.'});
@@ -340,8 +343,9 @@ async function compareAlignmentPresets(){
   const {evaluations}=await requestAlignment({...payload,compare_presets:true,summary_only:true},()=>{});
   if(!current()){output.textContent='';return}
   const percent=new Intl.NumberFormat(language,{style:'percent',maximumFractionDigits:1});
+  const descriptions={semantic:'supportSemantic',hybrid:'supportHybrid'};
   const rows=evaluations.map(({preset,support,unavailable})=>`<tr>
-   <th scope="row">${esc(t(alignmentPresets[preset]))}</th>${unavailable?
+   <th scope="row">${esc(t(alignmentPresets[preset]))}${descriptions[preset]?`<br><small>${esc(t(descriptions[preset]))}</small>`:''}</th>${unavailable?
     `<td colspan="2">${esc(unavailable)}</td>`:
     `<td>${support.total?`${support.positive}/${support.total} <strong>(${percent.format(support.percent/100)})</strong>`:'—'}</td>
     <td>${support.shifted}</td>`}</tr>`);
