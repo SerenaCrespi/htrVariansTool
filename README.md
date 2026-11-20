@@ -73,6 +73,29 @@ working alignment or touching review decisions. It lists lexical agreement,
 coverage, and reference units for which the methods disagree on counterpart
 units. These diagnostics are not estimates of verified accuracy.
 
+### Alignment accuracy audit
+
+Choose an audit scope before clicking **Compare methods**. A standard or
+extended sample draws up to 4 or 12 blocks of up to 10 lines in each group
+defined by witness side and whether the methods disagree. Complete verification
+includes all lines. The audit requires ALTO inputs and two available presets.
+
+For each block, judge the exact matching line numbers. Choose a suggested
+set, enter other numbers or ranges, mark the passage absent, or mark it
+undecidable. The other witness's numbered transcript is available next to the
+judgment form. **Save block** records the decisions in the project. The audit
+uses the full-document comparison as calculated, with the method names hidden
+in the judgment form. Collation decisions stay separate.
+
+Once all sampled blocks are judged, the report compares both witnesses at
+the same resolution, with the same weight per ALTO line. It uses the
+stratified block design to estimate whole-pair accuracy. The simultaneous
+95% intervals use conservative bounded sampling estimates and include the
+possible effects of undecidable judgments and missing provenance. A method
+is singled out only if every paired interval supports its advantage over
+the other available methods. Pick the scope before judging and interpret
+the intervals for that audit. A complete review has no sampling uncertainty.
+
 ## Review workflow
 
 1. Select the reference witness’s ALTO files and enter its witness name.

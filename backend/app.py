@@ -12,6 +12,7 @@ import argparse
 from copy import deepcopy
 from difflib import SequenceMatcher
 from functools import lru_cache
+from hashlib import sha256
 import json
 import re
 import unicodedata
@@ -23,6 +24,7 @@ from urllib.parse import unquote, urlparse
 import xml.etree.ElementTree as ET
 
 
+import alignment_audit
 import embedding_presets
 from alto_support import ancestors, resolve_tagrefs, tag_definitions
 from relocations import find_displaced_passages, summarize_ambiguities
@@ -408,7 +410,7 @@ def _word_items(words: list[dict]) -> list[dict]:
     """Regroup aligned word fragments by their original ALTO line."""
     items = []
     for word in words:
-        line_key = tuple(ref.get("line", "") for ref in word["refs"])
+        line_key = tuple((ref.get("alto_file"), ref.get("page"), ref.get("line")) for ref in word["refs"])
         if items and items[-1]["_line_key"] == line_key:
             items[-1]["text"] += " " + word["text"]
         else:
@@ -1028,9 +1030,13 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("Unknown alignment preset.")
             line_available = len(a) * len(b) <= MAX_EXPERIMENT_LINE_CELLS
             if payload.get("compare_presets") is True:
+                plan = payload.get("audit_plan", "standard")
+                if plan not in ("standard", "extended", "complete"):
+                    raise ValueError("Unknown audit sample plan.")
                 progress(1)
                 evaluations = []
                 evaluated = {}
+                audit_methods = {}
                 prepared = None
                 unavailable = None
                 for choice in ALIGNMENT_PRESETS:
@@ -1048,13 +1054,19 @@ class Handler(SimpleHTTPRequestHandler):
                         evaluations.append({"preset": choice, "unavailable": unavailable})
                         continue
                     evaluated[choice] = _reference_mappings(rows, len(a))
+                    if "alto" in payload:
+                        audit_methods[choice] = alignment_audit.project(rows, (a, b))
                     evaluations.append({"preset": choice, "method": method,
                                         **alignment_evaluation(rows, a, b)})
                 disagreements = [
                     i + 1 for i, alternatives in enumerate(zip(*evaluated.values()))
                     if any(mapping != alternatives[0] for mapping in alternatives[1:])
                 ]
-                result = {"evaluations": evaluations, "disagreements": disagreements}
+                audit = alignment_audit.sample((a, b), audit_methods, plan=plan)
+                signature = sha256(json.dumps([payload["alto"], audit_methods, plan],
+                                              ensure_ascii=False).encode()).hexdigest() if audit else None
+                result = {"evaluations": evaluations, "disagreements": disagreements,
+                          "audit": audit, "auditSignature": signature}
                 if streaming:
                     send_event({"result": result})
                 else:

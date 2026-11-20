@@ -275,6 +275,193 @@ messages.en['weighted Levenshtein by unit']='Weighted Levenshtein by unit';
 messages.it['weighted Levenshtein by unit']='Levenshtein ponderata per unità';
 messages.fr['weighted Levenshtein by unit']='Levenshtein pondérée par unité';
 const alignmentPresets={auto:'alignmentAuto',semantic:'alignmentSemantic',hybrid:'alignmentHybrid'};
+Object.assign(messages.en,{
+ auditPlan:'Audit scope',auditStandard:'Sample (up to 4 blocks per group)',
+ auditExtended:'Extended sample (up to 12 blocks per group)',auditComplete:'Complete verification',
+ auditReplace:'Replace the saved audit with a new audit for this comparison?',auditTitle:'Alignment accuracy audit',auditUnavailable:'Load ALTO files and enable at least two methods to start an audit.',
+ auditProgress:'Reviewed blocks: {done}/{total}',auditBlock:'Block {number} · {name} · lines {start}–{end}',
+ auditInstructions:'Select the exact counterpart lines. For a custom match, enter line numbers or ranges (e.g. 8, 10-12).',
+ auditChoose:'Choose a judgment',auditAbsent:'No counterpart',auditCustom:'Enter other lines',
+ auditUnknown:'Undecidable',auditOther:'Other witness · numbered transcript',
+ auditSave:'Save block',auditBadLines:'Choose a judgment for every line and check custom line numbers.',
+ auditWaiting:'Complete all sampled blocks to estimate accuracy across both witnesses.',
+ auditEstimate:'Exact line matches (95% simultaneous intervals)',auditWinner:'Best supported method: {name}',
+ auditTie:'The audit does not establish a winner.',auditDifference:'{a} vs {b}: {range} percentage points',
+ auditScope:'Both witnesses, equal weight per ALTO line. Intervals account for sampled blocks and undecidable lines.',
+ auditSource:'Line {n}',auditBack:'Previous block',auditNext:'Next block'
+});
+Object.assign(messages.it,{
+ auditPlan:'Ampiezza della verifica',auditStandard:'Campione (fino a 4 blocchi per gruppo)',
+ auditExtended:'Campione esteso (fino a 12 blocchi per gruppo)',auditComplete:'Verifica completa',
+ auditReplace:'Sostituire la verifica salvata con una nuova per questo confronto?',auditTitle:'Verifica della riuscita',auditUnavailable:'Carica gli ALTO e abilita almeno due metodi per avviare la verifica.',
+ auditProgress:'Blocchi verificati {done}/{total}',auditBlock:'Blocco {number} · {name} · righe {start}–{end}',
+ auditInstructions:'Scegli le righe corrispondenti. Per un altro accostamento, inserisci numeri o intervalli (es. 8, 10-12).',
+ auditChoose:'Scegli un giudizio',auditAbsent:'Nessuna corrispondenza',auditCustom:'Indica altre righe',
+ auditUnknown:'Indecidibile',auditOther:'Altro testimone · trascrizione numerata',
+ auditSave:'Salva il blocco',auditBadLines:'Assegna un giudizio a ogni riga e controlla i numeri inseriti.',
+ auditWaiting:'Completa tutti i blocchi estratti per stimare la riuscita sui due testimoni.',
+ auditEstimate:'Accostamenti esatti per riga (intervalli simultanei al 95%)',auditWinner:'Metodo meglio supportato · {name}',
+ auditTie:'La verifica lascia aperta la scelta del metodo.',auditDifference:'{a} e {b} · {range} punti percentuali',
+ auditScope:'Entrambi i testimoni, con lo stesso peso per riga ALTO. Gli intervalli tengono conto del campionamento e dei casi indecidibili.',
+ auditSource:'Riga {n}',auditBack:'Blocco precedente',auditNext:'Blocco successivo'
+});
+Object.assign(messages.fr,{
+ auditPlan:'Étendue de la vérification',auditStandard:'Échantillon (jusqu’à 4 blocs par groupe)',
+ auditExtended:'Échantillon étendu (jusqu’à 12 blocs par groupe)',auditComplete:'Vérification complète',
+ auditReplace:'Remplacer la vérification enregistrée par une nouvelle pour cette comparaison ?',auditTitle:'Vérification de l’alignement',auditUnavailable:'Chargez les fichiers ALTO et activez au moins deux méthodes.',
+ auditProgress:'Blocs vérifiés {done}/{total}',auditBlock:'Bloc {number} · {name} · lignes {start}–{end}',
+ auditInstructions:'Sélectionnez les lignes correspondantes ou saisissez leurs numéros (p. ex. 8, 10-12).',
+ auditChoose:'Choisir un jugement',auditAbsent:'Aucune correspondance',auditCustom:'Indiquer d’autres lignes',
+ auditUnknown:'Indécidable',auditOther:'Autre témoin · transcription numérotée',
+ auditSave:'Enregistrer le bloc',auditBadLines:'Vérifiez les jugements et les numéros de ligne.',
+ auditWaiting:'Vérifiez tous les blocs tirés pour estimer la réussite sur les deux témoins.',
+ auditEstimate:'Correspondances exactes par ligne (intervalles simultanés à 95 %)',auditWinner:'Méthode la mieux étayée · {name}',
+ auditTie:'La vérification ne permet pas de départager les méthodes.',auditDifference:'{a} et {b} · {range} points de pourcentage',
+ auditScope:'Les deux témoins, avec le même poids par ligne ALTO. Les intervalles tiennent compte de l’échantillonnage et des cas indécidables.',
+ auditSource:'Ligne {n}',auditBack:'Bloc précédent',auditNext:'Bloc suivant'
+});
+let alignmentAudit=null;
+
+function auditStatistics(audit, decisions){
+ const {blocks,strata,methods,texts}=audit;
+ const total=texts[0].length+texts[1].length;
+ const comparisons=methods.length*(methods.length+1)/2;
+ function estimate(first,second){
+  let lower=second?0:total/2,upper=lower,radiusTerm=0,missingLineBound=0;
+  strata.forEach((stratum,h)=>{
+   const selected=blocks.map((block,i)=>[block,decisions[i]]).filter(([block])=>block.stratum===h);
+   const weight=stratum.population/selected.length;
+   const value=(proposal,truth)=>proposal===null||truth===null?[0,1]:
+    [Number(proposal.join(',')===truth.join(',')),Number(proposal.join(',')===truth.join(','))];
+   selected.forEach(([block,truth])=>block.rows.forEach((row,i)=>{
+    if(second&&row[first]!==null&&row[second]!==null&&row[first].join(',')===row[second].join(','))return;
+    const a=value(row[first],truth[i]);
+    const b=second?value(row[second],truth[i]):[.5,.5];
+    lower+=weight*(a[0]-b[1]);
+    upper+=weight*(a[1]-b[0]);
+   }));
+   if(selected.length<stratum.population){
+    const span=(second?2:1)*stratum.maxSize;
+    radiusTerm+=stratum.population**2*span**2/selected.length;
+    missingLineBound+=span*(stratum.population-selected.length);
+   }
+  });
+  // Hoeffding for bounded block totals sampled without replacement, with
+  // Bonferroni across method scores and paired differences. Census strata
+  // have zero sampling error. The finite bounds also cover unknown judgments.
+  const radius=Math.min(missingLineBound,Math.sqrt(radiusTerm*Math.log(2*comparisons/.05)/2));
+  return {low:Math.max(second?-100:0,100*(lower-radius)/total),high:Math.min(100,100*(upper+radius)/total),
+   point:lower===upper?Math.min(100,Math.max(second?-100:0,100*lower/total)):null};
+ }
+ const scores=methods.map(method=>({method,...estimate(method)}));
+ const pairs=methods.flatMap((first,i)=>methods.slice(i+1).map(second=>({first,second,...estimate(first,second)})));
+ const winner=methods.find(method=>pairs.filter(p=>p.first===method||p.second===method)
+  .every(p=>p.first===method?p.low>0:p.high<0));
+ return {scores,pairs,winner};
+}
+
+function auditLines(raw,limit){
+ if(!/^\s*\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*\s*$/.test(raw))return null;
+ const values=new Set();
+ for(const part of raw.split(',')){
+  const [start,end=start]=part.split('-').map(Number);
+  if(start<1||end<start||end>limit)return null;
+  for(let i=start;i<=end;i++)values.add(i);
+ }
+ return [...values].sort((a,b)=>a-b);
+}
+
+function validAlignmentAudit(state){
+ if(!state||typeof state!=='object'||!state.audit||!state.decisions||
+  !/^[a-f0-9]{64}$/.test(state.signature)||! /^[B-J]$/.test(state.witnessId)||
+  !Array.isArray(state.witnessNames)||state.witnessNames.length!==2||
+  !state.witnessNames.every(name=>typeof name==='string'))return false;
+ const {texts,methods,strata,blocks}=state.audit;
+ if(!Array.isArray(texts)||texts.length!==2||!texts.every(side=>Array.isArray(side)&&side.length&&side.every(x=>typeof x==='string'))||
+  !Array.isArray(methods)||methods.length<2||new Set(methods).size!==methods.length||!methods.every(m=>Object.hasOwn(alignmentPresets,m))||
+  !Array.isArray(strata)||!strata.length||!Array.isArray(blocks)||!blocks.length||
+  !Number.isInteger(state.index)||state.index<0||state.index>=blocks.length)return false;
+ const targets=(values,side)=>values===null||Array.isArray(values)&&values.every((n,i)=>Number.isInteger(n)&&
+  n>(values[i-1]||0)&&n<=texts[1-side].length);
+ return strata.every(h=>h&&[0,1].includes(h.side)&&Number.isInteger(h.population)&&h.population>0&&
+  Number.isInteger(h.maxSize)&&h.maxSize>=1&&h.maxSize<=10)&&
+  blocks.every(b=>b&&Number.isInteger(b.stratum)&&strata[b.stratum]?.side===b.side&&[0,1].includes(b.side)&&
+   Number.isInteger(b.start)&&b.start>=0&&Array.isArray(b.rows)&&b.rows.length>0&&
+   b.rows.length<=strata[b.stratum].maxSize&&b.start+b.rows.length<=texts[b.side].length&&
+   b.rows.every(row=>row&&methods.every(m=>targets(row[m],b.side))))&&
+  strata.every((h,i)=>{const n=blocks.filter(b=>b.stratum===i).length;return n>0&&n<=h.population})&&
+  Object.entries(state.decisions).every(([key,truth])=>{
+   const block=/^(0|[1-9]\d*)$/.test(key)?blocks[Number(key)]:null;
+   return block&&Array.isArray(truth)&&truth.length===block.rows.length&&truth.every(row=>targets(row,block.side));
+  });
+}
+
+function renderAlignmentAudit(){
+ const host=$('alignmentAudit');
+ if(!alignmentAudit){host.textContent='';return}
+ const {audit,decisions,witnessNames,index}=alignmentAudit;
+ const {blocks,texts,methods}=audit;
+ const block=blocks[index],opposite=texts[1-block.side];
+ const done=Object.keys(decisions).length;
+ const stats=done===blocks.length?auditStatistics(audit,decisions):null;
+ const format=value=>new Intl.NumberFormat(language,{maximumFractionDigits:1}).format(value);
+ const interval=({low,high})=>`${format(low)} – ${format(high)}`;
+ const label=method=>t(alignmentPresets[method]);
+ const result=stats?`<p><strong>${esc(t(stats.winner?'auditWinner':'auditTie',{name:stats.winner?label(stats.winner):''}))}</strong></p>
+  <p>${esc(t('auditEstimate'))}</p><ul>${stats.scores.map(row=>`<li>${esc(label(row.method))} · ${row.point===null?'':format(row.point)+'% · '}${interval(row)}%</li>`).join('')}</ul>
+  <ul>${stats.pairs.map(row=>`<li>${esc(t('auditDifference',{a:label(row.first),b:label(row.second),range:interval(row)}))}</li>`).join('')}</ul>
+  <p class="hint">${esc(t('auditScope'))}</p>`:`<p>${esc(t('auditWaiting'))}</p>`;
+ const choices=block.rows.map(row=>[...new Set(methods.map(method=>row[method]).filter(x=>x?.length).map(x=>x.join(',')))].sort());
+ const reviewed=decisions[index];
+ const lineList=(lines,offset=0)=>lines.map((text,i)=>`<li value="${offset+i+1}">${esc(text)}</li>`).join('');
+ const units=block.rows.map((_,i)=>{
+  const truth=reviewed?.[i],exact=truth?.join(',');
+  const custom=Boolean(exact&&!choices[i].includes(exact));
+  const selected=truth===null?'unknown':truth===undefined?'':custom?'custom':exact||'absent';
+  const options=[['','auditChoose'],...choices[i].map(ids=>[ids,ids]),['absent','auditAbsent'],['custom','auditCustom'],['unknown','auditUnknown']];
+  const previews=choices[i].map(ids=>`<li><strong>${esc(ids)}</strong> · ${esc(ids.split(',').map(n=>opposite[Number(n)-1]).join(' '))}</li>`).join('');
+  return `<fieldset><legend>${esc(t('auditSource',{n:block.start+i+1}))}</legend>
+   <p>${esc(texts[block.side][block.start+i])}</p>${previews?`<ul>${previews}</ul>`:''}
+   <select class="form-control" aria-label="${esc(t('auditSource',{n:block.start+i+1}))}" name="choice${i}" required>
+    ${options.map(([key,text])=>`<option value="${esc(key)}" ${key===selected?'selected':''}>${esc(t(text))}</option>`).join('')}
+   </select><input class="form-control" name="custom${i}" aria-label="${esc(t('auditCustom'))}" placeholder="8, 10-12" value="${custom?esc(exact):''}"></fieldset>`;
+ }).join('');
+ const contextStart=Math.max(0,block.start-2),contextEnd=block.start+block.rows.length+2;
+ host.innerHTML=`<h4>${esc(t('auditTitle'))}</h4><p>${esc(t('auditProgress',{done,total:blocks.length}))}</p>${result}
+  <div class="controls">
+   <button type="button" class="btn btn-outline" data-step="-1" ${index===0?'disabled':''}>${esc(t('auditBack'))}</button>
+   <button type="button" class="btn btn-outline" data-step="1" ${index===blocks.length-1?'disabled':''}>${esc(t('auditNext'))}</button>
+  </div>
+  <h5>${esc(t('auditBlock',{number:index+1,name:witnessNames[block.side],start:block.start+1,end:block.start+block.rows.length}))}</h5>
+  <ol>${lineList(texts[block.side].slice(contextStart,contextEnd),contextStart)}</ol>
+  <details><summary>${esc(t('auditOther'))}</summary><ol>${lineList(opposite)}</ol></details>
+  <p class="hint">${esc(t('auditInstructions'))}</p>
+  <form>${units}<p role="alert"></p><button class="btn btn-blue">${esc(t('auditSave'))}</button></form>`;
+ for(const button of host.querySelectorAll('[data-step]'))button.onclick=()=>{
+  alignmentAudit.index+=Number(button.dataset.step);
+  renderAlignmentAudit();
+ };
+ host.querySelector('form').onsubmit=event=>{
+  event.preventDefault();
+  const form=new FormData(event.currentTarget);
+  const truth=block.rows.map((_,i)=>{
+   const choice=form.get('choice'+i);
+   if(choice==='unknown')return null;
+   if(choice==='absent')return [];
+   const parsed=auditLines(choice==='custom'?form.get('custom'+i):choice,opposite.length);
+   return parsed||undefined;
+  });
+  if(truth.includes(undefined)){
+   event.currentTarget.querySelector('[role="alert"]').textContent=t('auditBadLines');
+   return;
+  }
+  decisions[index]=truth;
+  const next=blocks.findIndex((_,i)=>!Object.hasOwn(decisions,i));
+  if(next>=0)alignmentAudit.index=next;
+  saveBrowserSession();
+  renderAlignmentAudit();
+ };
+}
 async function compareAlignmentPresets(){
  const output=$('alignmentEvaluation'),button=$('compareAlignmentBtn');
  if(button.disabled)return;
@@ -292,7 +479,7 @@ async function compareAlignmentPresets(){
  button.disabled=true;
  output.textContent=t('comparingAlignment',{name});
  try{
-  const {evaluations,disagreements}=await requestAlignment({...payload,compare_presets:true},()=>{});
+  const {evaluations,disagreements,audit,auditSignature:signature}=await requestAlignment({...payload,compare_presets:true,audit_plan:$('auditPlan').value},()=>{});
   if(!current()){output.textContent='';return}
   const percent=value=>value===null?'—':new Intl.NumberFormat(language,{style:'percent',maximumFractionDigits:1}).format(value/100);
   const items=evaluations.map(({preset,method,score,coverage,unavailable})=>{
@@ -301,6 +488,17 @@ async function compareAlignmentPresets(){
    return `<li>${esc(label)} — ${esc(result)}</li>`;
   });
   output.innerHTML=`<strong>${esc(t('alignmentEvaluation',{name}))}</strong><ul>${items.join('')}</ul>${disagreements.length?`<details><summary>${esc(t('alignmentDisagreements',{count:disagreements.length}))}</summary><p>${disagreements.join(', ')}</p></details>`:''}<p class="hint">${esc(t('alignmentEvaluationHint'))}</p>`;
+  if(audit){
+   const same=alignmentAudit?.witnessId===id&&alignmentAudit.signature===signature;
+   if(alignmentAudit&&!same&&Object.keys(alignmentAudit.decisions).length&&!confirm(t('auditReplace')))return;
+   if(!same||!Object.keys(alignmentAudit.decisions).length){
+    alignmentAudit={audit,signature,decisions:{},witnessId:id,witnessNames:[names.A,name],index:0};
+    saveBrowserSession();
+   }
+   renderAlignmentAudit();
+  }else if(!alignmentAudit){
+   $('alignmentAudit').textContent=t('auditUnavailable');
+  }
  }catch(error){output.textContent=current()?t('error')+error.message:''}
  finally{button.disabled=false}
 }
@@ -1102,6 +1300,7 @@ function captureProject(detach=true){
  const reviews=Object.fromEntries(Object.keys(pairResults).map(id=>[id,currentReview(id)]));
  const state={witnessIds,names:Object.fromEntries(witnessIds.map(id=>[id,names[id]])),rawByWitness:Object.fromEntries(witnessIds.map(id=>[id,rawByWitness[id]])),pairResults,pairReviews:reviews,activeWitness,editedMode,
   language,viewFilter,alignmentPreset:$('alignmentPreset').value,genre:uniformGenre,genreRanges,titleLines:[...titleLines],
+  ...(alignmentAudit?{alignmentAudit}:{}),
   ...(apparatusIds.size?{apparatusIds:[...apparatusIds]}:{}),
   iiif:Object.fromEntries(witnessIds.map(id=>[id,$(`iiif${id}`)?.value||''])),
   imageFiles:Object.fromEntries(witnessIds.map(id=>[id,images[id]?.length?images[id].map(x=>x.name):(projectImageFiles[id]||[])])),
@@ -1120,6 +1319,7 @@ function validateProject(project){
  if(!strings(ids)||!ids.length||ids.length>10||ids[0]!=='A'||new Set(ids).size!==ids.length||ids.some(id=>!(/^[A-J]$/).test(id)))fail();
  for(const key of ['names','rawByWitness','pairResults','pairReviews','iiif','imageFiles','imageLinks'])if(!obj(s[key]))fail();
  if(!['en','fr','it'].includes(s.language)||!['all','variants','pending','uncertain'].includes(s.viewFilter)||!['prose','poetry','drama'].includes(s.genre)||typeof s.editedMode!=='boolean')fail();
+ if(s.alignmentAudit!==undefined&&!validAlignmentAudit(s.alignmentAudit))fail();
  if(s.alignmentPreset!==undefined&&s.alignmentPreset!=='lines'&&!Object.hasOwn(alignmentPresets,s.alignmentPreset))fail();
  if(s.genreRanges!==undefined&&(!Array.isArray(s.genreRanges)||!s.genreRanges.every(r=>obj(r)&&Number.isInteger(r.start)&&Number.isInteger(r.end)&&['prose','poetry','drama'].includes(r.genre))))fail();
  if(s.titleLines!==undefined&&!strings(s.titleLines))fail();
@@ -1267,6 +1467,7 @@ function restoreProject(s){
  images=Object.fromEntries(witnessIds.map(id=>[id,[]]));imageStatus={};imageOverrides={};
  projectImageLinks=s.imageLinks;projectImageFiles=s.imageFiles;
  A=[];B=[];groups=[];decisions={};movementCandidates=[];movementDecisions={};ambiguousCases=[];
+ alignmentAudit=s.alignmentAudit||null;
  $('alignmentPreset').value=Object.hasOwn(alignmentPresets,s.alignmentPreset)?s.alignmentPreset:'auto';$('alignmentEvaluation').textContent='';
  alignmentDraft=null;alignmentMethod='';$('modal').innerHTML='';$('recurringText').textContent='';
  $('additionalWitnesses').innerHTML='';$('additionalImageRows').innerHTML='';
@@ -1277,6 +1478,7 @@ function restoreProject(s){
  genreRanges=s.genreRanges||[];uniformGenre=s.genre;titleLines=new Set(s.titleLines||[]);
  language=s.language;$('language').value=language;viewFilter=s.viewFilter;$('resultFilter').value=viewFilter;$('genre').value=s.genre;
  setLanguage(language);
+ renderAlignmentAudit();
  for(const id of witnessIds){$(`iiif${id}`).value=s.iiif[id];$(`dossierName${id}`).dataset.userEdited='true'}
  if(Object.keys(pairResults).length)activatePair(activeWitness,false);
  else{$('alignSummary').textContent='';$('totalBadge').textContent=t('unitCount',{n:0,total:0});$('pendingBadge').textContent=t('pending',{n:0,total:0});$('keptBadge').textContent=t('retained',{n:0})}
