@@ -75,10 +75,15 @@ units. These diagnostics are not estimates of verified accuracy.
 
 ### Alignment accuracy audit
 
-Choose an audit scope before clicking **Compare methods**. A standard or
-extended sample draws up to 4 or 12 blocks of up to 10 lines in each group
-defined by witness side and whether the methods disagree. Complete verification
-includes all lines. The audit requires ALTO inputs and two available presets.
+**Compare methods** reports the percentage and count of reference lines
+with strong textual support. Each proposed counterpart must reach at least
+70% ordered normalized-token Dice similarity. The denominator is the same
+for all methods and includes unmatched textual reference lines. Treat this
+as an automatic indicator. Reformulation can reduce the score and repeated
+phrases can inflate it.
+
+An optional review uses automatically selected blocks of up to 10 lines on
+both witness sides. The review requires ALTO inputs and two available presets.
 
 For each block, judge the exact matching line numbers. Choose a suggested
 set, enter other numbers or ranges, mark the passage absent, or mark it

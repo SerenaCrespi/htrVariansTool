@@ -881,6 +881,26 @@ def alignment_evaluation(rows, a, b):
     }
 
 
+def alignment_support(reference, witness, mapping):
+    """Share of textual reference lines with strong ordered lexical support."""
+    right = [normalize(unit["text"]) for unit in witness]
+    positive = total = 0
+    for unit, targets in zip(reference, mapping, strict=True):
+        left = normalize(unit["text"])
+        if not left:
+            continue
+        total += 1
+        if not targets:
+            continue
+        counterpart = [token for index in targets for token in right[index - 1]]
+        matches = sum(block.size for block in
+                      SequenceMatcher(None, left, counterpart, autojunk=False).get_matching_blocks())
+        # Ordered token Dice >= 70%. Compare without preset-specific scores.
+        positive += 20 * matches >= 7 * (len(left) + len(counterpart))
+    return {"positive": positive, "total": total,
+            "percent": round(100 * positive / total, 1) if total else None}
+
+
 def _reference_mappings(rows, count):
     mappings = [set() for _ in range(count)]
     for row in rows:
@@ -1056,7 +1076,12 @@ class Handler(SimpleHTTPRequestHandler):
                     evaluated[choice] = _reference_mappings(rows, len(a))
                     if "alto" in payload:
                         audit_methods[choice] = alignment_audit.project(rows, (a, b))
+                        mapping = audit_methods[choice][0]
+                    else:
+                        mapping = [sorted(index + 1 for index in targets)
+                                   for targets in evaluated[choice]]
                     evaluations.append({"preset": choice, "method": method,
+                                        "support": alignment_support(a, b, mapping),
                                         **alignment_evaluation(rows, a, b)})
                 disagreements = [
                     i + 1 for i, alternatives in enumerate(zip(*evaluated.values()))

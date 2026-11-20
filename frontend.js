@@ -276,8 +276,6 @@ messages.it['weighted Levenshtein by unit']='Levenshtein ponderata per unità';
 messages.fr['weighted Levenshtein by unit']='Levenshtein pondérée par unité';
 const alignmentPresets={auto:'alignmentAuto',semantic:'alignmentSemantic',hybrid:'alignmentHybrid'};
 Object.assign(messages.en,{
- auditPlan:'Audit scope',auditStandard:'Sample (up to 4 blocks per group)',
- auditExtended:'Extended sample (up to 12 blocks per group)',auditComplete:'Complete verification',
  auditReplace:'Replace the saved audit with a new audit for this comparison?',auditTitle:'Alignment accuracy audit',auditUnavailable:'Load ALTO files and enable at least two methods to start an audit.',
  auditProgress:'Reviewed blocks: {done}/{total}',auditBlock:'Block {number} · {name} · lines {start}–{end}',
  auditAbsent:'No counterpart',auditCustom:'Enter other lines',
@@ -289,8 +287,6 @@ Object.assign(messages.en,{
  auditSource:'Line {n}',auditBack:'Previous block',auditNext:'Next block'
 });
 Object.assign(messages.it,{
- auditPlan:'Ampiezza della verifica',auditStandard:'Campione (fino a 4 blocchi per gruppo)',
- auditExtended:'Campione esteso (fino a 12 blocchi per gruppo)',auditComplete:'Verifica completa',
  auditReplace:'Sostituire la verifica salvata con una nuova per questo confronto?',auditTitle:'Verifica della riuscita',auditUnavailable:'Carica gli ALTO e abilita almeno due metodi per avviare la verifica.',
  auditProgress:'Blocchi verificati {done}/{total}',auditBlock:'Blocco {number} · {name} · righe {start}–{end}',
  auditAbsent:'Nessuna corrispondenza',auditCustom:'Indica altre righe',
@@ -302,8 +298,6 @@ Object.assign(messages.it,{
  auditSource:'Riga {n}',auditBack:'Blocco precedente',auditNext:'Blocco successivo'
 });
 Object.assign(messages.fr,{
- auditPlan:'Étendue de la vérification',auditStandard:'Échantillon (jusqu’à 4 blocs par groupe)',
- auditExtended:'Échantillon étendu (jusqu’à 12 blocs par groupe)',auditComplete:'Vérification complète',
  auditReplace:'Remplacer la vérification enregistrée par une nouvelle pour cette comparaison ?',auditTitle:'Vérification de l’alignement',auditUnavailable:'Chargez les fichiers ALTO et activez au moins deux méthodes.',
  auditProgress:'Blocs vérifiés {done}/{total}',auditBlock:'Bloc {number} · {name} · lignes {start}–{end}',
  auditAbsent:'Aucune correspondance',auditCustom:'Indiquer d’autres lignes',
@@ -353,6 +347,15 @@ Object.assign(messages.fr,{auditExamples:'Exemples de comparaison',auditExampleH
  auditExampleSave:'Enregistrer l’exemple',auditExampleLoad:'Afficher la ligne',auditNextDisagreement:'Désaccord suivant',auditSavedExamples:'Exemples enregistrés',
  auditSample:'Vérification de l’échantillon',auditExact:'Exact',auditPartial:'Partiel',auditWrong:'Incorrect',auditMissing:'Proposition indisponible',
  auditNoProposal:'Aucune correspondance proposée',auditCounts:'Exacts / évaluables',auditSampleCounts:'Résultats de l’échantillon vérifié'});
+Object.assign(messages.en,{supportTitle:'Automatic comparison · {reference} and {name}',supportRate:'Strongly supported lines',
+ supportCount:'Lines',
+ supportHint:'Each method is scored on the same reference lines. A line counts when its proposed match reaches 70% ordered word overlap. This measures textual support. A genuine rewrite can score low and a repeated phrase can score high.'});
+Object.assign(messages.it,{supportTitle:'Confronto automatico · {reference} e {name}',supportRate:'Righe con forte riscontro',
+ supportCount:'Righe',
+ supportHint:'La misura usa le stesse righe di riferimento per tutti i metodi. Una riga conta se la proposta raggiunge il 70% di concordanza fra parole nello stesso ordine. Una riscrittura ben allineata può ottenere un valore basso e una formula ricorrente può ottenerne uno alto.'});
+Object.assign(messages.fr,{supportTitle:'Comparaison automatique · {reference} et {name}',supportRate:'Lignes fortement étayées',
+ supportCount:'Lignes',
+ supportHint:'La mesure porte sur les mêmes lignes de référence pour chaque méthode. Une ligne compte si la proposition atteint 70 % de mots communs dans le même ordre. Une reformulation bien alignée peut avoir un score faible et une formule répétée un score élevé.'});
 let alignmentAudit=null;
 
 function auditStatistics(audit, decisions){
@@ -609,13 +612,20 @@ async function compareAlignmentPresets(){
  button.disabled=true;
  output.textContent=t('comparingAlignment',{name});
  try{
-  const {evaluations,disagreements,audit,auditSignature:signature}=await requestAlignment({...payload,compare_presets:true,audit_plan:$('auditPlan').value},()=>{});
+  const {evaluations,disagreements,audit,auditSignature:signature}=await requestAlignment({...payload,compare_presets:true},()=>{});
   if(!current()){output.textContent='';return}
   const percent=value=>value===null?'—':new Intl.NumberFormat(language,{style:'percent',maximumFractionDigits:1}).format(value/100);
   const items=evaluations.map(({preset,method,score,coverage,unavailable})=>`<tr>
    <th scope="row">${esc(t(alignmentPresets[preset]))}${method?`<small>${esc(t(method))}</small>`:''}</th>
    ${unavailable?`<td colspan="2">${esc(unavailable)}</td>`:`<td>${percent(score)}</td><td>${percent(coverage)}</td>`}</tr>`);
-  output.innerHTML=`<details ${audit?'':'open'}><summary>${esc(t('auditDiagnostics',{name}))}</summary>
+  const supportRows=evaluations.map(({preset,support,unavailable})=>`<tr>
+   <th scope="row">${esc(t(alignmentPresets[preset]))}</th>${unavailable?
+    `<td colspan="2">${esc(unavailable)}</td>`:
+    `<td><strong>${support?percent(support.percent):'—'}</strong></td><td>${support?`${support.positive} / ${support.total}`:'—'}</td>`}</tr>`);
+  output.innerHTML=`<h4>${esc(t('supportTitle',{reference:names.A,name}))}</h4>
+   <div class="audit-table"><table><thead><tr>${['auditHeadMethod','supportRate','supportCount'].map(key=>`<th scope="col">${esc(t(key))}</th>`).join('')}</tr></thead>
+   <tbody>${supportRows.join('')}</tbody></table></div><p class="hint">${esc(t('supportHint'))}</p>
+   <details><summary>${esc(t('auditDiagnostics',{name}))}</summary>
    <div class="audit-table"><table><thead><tr>${['auditHeadMethod','auditHeadLexical','auditHeadCoverage'].map(key=>`<th scope="col">${esc(t(key))}</th>`).join('')}</tr></thead>
    <tbody>${items.join('')}</tbody></table></div><p class="hint">${esc(t('alignmentEvaluationHint'))}</p>
    ${disagreements.length?`<details><summary>${esc(t('alignmentDisagreements',{count:disagreements.length}))}</summary><p>${disagreements.join(', ')}</p></details>`:''}</details>`;
