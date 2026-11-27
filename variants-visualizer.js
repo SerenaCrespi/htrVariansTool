@@ -441,12 +441,15 @@ function renderStemma() {
  tree.append(stemmaBranches(clusterWitnesses(witnesses, evidence)));
 }
 
-function showDetails(index) {
+function showDetails(index, revealSource = true) {
  active = index;
  details.hidden = index < 0;
  details.replaceChildren();
- loci.forEach(({button}, i) => button.setAttribute('aria-expanded', String(i === index)));
- highlightSource(index >= 0);
+ loci.forEach(({button, plain}, i) => {
+  button.setAttribute('aria-expanded', String(i === index));
+  plain.classList.toggle('selected-reading', i === index);
+ });
+ highlightSource(revealSource && index >= 0);
  if (index < 0) return;
  const locus = loci[index];
  if (locus.id) details.append(element('strong', locus.id));
@@ -458,7 +461,27 @@ function showDetails(index) {
   row.append(entry.text || '∅');
   details.append(row);
  }
- locus.button.closest('p, h2, .verse, .speech')?.after(details);
+ const block = locus.button.closest('p, h2, .verse, .speech');
+ if (block) block.after(details);
+ else content.append(details);
+}
+
+function openApparatusAtCaret() {
+ const {selectionStart, selectionEnd} = sourceEditor;
+ if (document.activeElement !== sourceEditor || selectionStart !== selectionEnd ||
+     edition?.source !== sourceEditor.value) return;
+ const index = loci.findIndex(({range}) => range && range.start <= selectionStart && selectionStart < range.end);
+ if (index < 0 || index === active) return;
+
+ hovered = focused = -1;
+ showDetails(index, false);
+ const reading = highlight.checked ? loci[index].button : loci[index].plain;
+ const viewer = content.getBoundingClientRect();
+ const top = reading.getBoundingClientRect().top - viewer.top;
+ const bottom = details.getBoundingClientRect().bottom - viewer.top;
+ if (top < 0 || top >= content.clientHeight || bottom > content.clientHeight) {
+  content.scrollTop += top - content.clientHeight / 4;
+ }
 }
 
 function refresh() {
@@ -570,6 +593,7 @@ async function validateSource({original = false} = {}) {
   if (!response.ok || error) throw Error(error || 'TEI validation failed.');
   if (request.signal.aborted) return;
   if (!original) displayEdition(next, Boolean(edition));
+  openApparatusAtCaret();
   showSourceError();
  } catch (error) {
   if (request.signal.aborted) return;
@@ -578,6 +602,9 @@ async function validateSource({original = false} = {}) {
 }
 
 sourceEditor.addEventListener('scroll', syncSourceScroll);
+for (const type of ['selectionchange', 'click', 'keyup']) {
+ sourceEditor.addEventListener(type, openApparatusAtCaret);
+}
 sourceEditor.addEventListener('input', () => {
  cancelValidation();
  downloadButton.disabled = true;

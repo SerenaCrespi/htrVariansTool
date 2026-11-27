@@ -145,6 +145,7 @@ select { min-width: 0; max-width: 100%; font-weight: 400 }
 }
 .apparatus:hover, .apparatus[aria-expanded="true"] { background: #ead9a4 }
 .plain-reading { white-space: pre-wrap }
+.plain-reading.selected-reading { background: #ead9a4 }
 .details {
  margin: 10px 0 14px;
  border: 1px solid #e7dfc9;
@@ -338,6 +339,6 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
  </aside>
 </div>
 </main>
-<script src="/variants-visualizer.js?v=tei-indent" defer></script>
+<script src="/variants-visualizer.js?v=tei-caret-sync" defer></script>
 </body>
 </html>
