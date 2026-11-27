@@ -196,6 +196,7 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
  color: var(--forest-deep);
  border-radius: 6px 6px 0 0;
 }
+.source-actions { display: flex; flex-wrap: wrap; gap: 8px }
 .source-header label { font-weight: 700 }
 #tei-error { margin: 0; padding: 6px 12px; color: #8a1526 }
 .source-editor { position: relative; flex: 1; min-height: 0; overflow: hidden }
@@ -313,7 +314,10 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
   <section id="tei-panel" aria-label="TEI editor" hidden>
    <div class="source-header">
     <label for="tei-source">TEI source</label>
-    <button class="btn" id="download-tei" type="button">Download TEI</button>
+    <div class="source-actions">
+     <button class="btn" id="indent-tei" type="button">Indent TEI</button>
+     <button class="btn" id="download-tei" type="button">Download TEI</button>
+    </div>
    </div>
    <p id="tei-error" role="status" hidden></p>
    <div class="source-editor">
@@ -334,6 +338,6 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
  </aside>
 </div>
 </main>
-<script src="/variants-visualizer.js?v=tei-apparatus-highlight" defer></script>
+<script src="/variants-visualizer.js?v=tei-indent" defer></script>
 </body>
 </html>

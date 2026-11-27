@@ -31,11 +31,16 @@ function element(tag, text, className) {
  return node;
 }
 
-function parseTEI(source) {
+function parseXML(source) {
  const doc = new DOMParser().parseFromString(source, 'application/xml');
  const error = [...doc.getElementsByTagNameNS('*', 'parsererror')].find(node =>
   ['http://www.mozilla.org/newlayout/xml/parsererror.xml', 'http://www.w3.org/1999/xhtml'].includes(node.namespaceURI));
  if (error) throw Error(error.querySelector('div')?.textContent.trim() || 'The XML is invalid.');
+ return doc;
+}
+
+function parseTEI(source) {
+ const doc = parseXML(source);
  const body = doc.getElementsByTagNameNS(TEI, 'body')[0];
  const witnesses = new Map([...doc.getElementsByTagNameNS(TEI, 'witness')]
   .map(node => [node.getAttributeNS(XML, 'id'), node.textContent.trim()]).filter(([id]) => id));
@@ -60,15 +65,70 @@ function sourceRanges(doc, source) {
   if (tag.startsWith('</')) {
    const entry = open.pop();
    if (entry?.node.nodeName !== name) return new WeakMap();
-   ranges.set(entry.node, {start: entry.start, end});
+   ranges.set(entry.node, {start: entry.start, end, contentStart: entry.contentStart, contentEnd: match.index});
   } else {
    const node = parsed[index++];
    if (node?.nodeName !== name || (open.at(-1)?.node || doc) !== node.parentNode) return new WeakMap();
    if (tag.endsWith('/>')) ranges.set(node, {start: match.index, end});
-   else open.push({node, start: match.index});
+   else open.push({node, start: match.index, contentStart: end});
   }
  }
  return index === parsed.length && open.length === 0 ? ranges : new WeakMap();
+}
+
+// Reindent whitespace between structural children only. In mixed content
+// even a gap between two tags can represent a space in the edition.
+const indentableTEI = new Set([
+ 'TEI', 'teiCorpus', 'teiHeader', 'fileDesc', 'titleStmt', 'editionStmt',
+ 'publicationStmt', 'sourceDesc', 'encodingDesc', 'profileDesc', 'revisionDesc',
+ 'text', 'front', 'body', 'back', 'div', 'group', 'lg', 'sp', 'listWit',
+ 'listApp', 'app', 'rdgGrp', 'list', 'table', 'row',
+]);
+
+function indentTEI(source) {
+ const doc = parseXML(source);
+ const ranges = sourceRanges(doc, source);
+ if (doc.documentElement.namespaceURI !== TEI || !ranges.has(doc.documentElement)) {
+  throw Error('The source could not be indented as TEI.');
+ }
+ const edits = [];
+
+ function visit(node, depth, preserve) {
+  const space = node.getAttributeNS(XML, 'space');
+  preserve = space === 'preserve' || (space !== 'default' && preserve);
+  const children = [...node.children];
+  if (!preserve && children.length && node.namespaceURI === TEI && indentableTEI.has(node.localName)) {
+   const {contentStart, contentEnd} = ranges.get(node);
+   const gaps = [];
+   let start = contentStart;
+   for (const child of children) {
+    const range = ranges.get(child);
+    gaps.push({start, end: range.start, depth: depth + 1});
+    start = range.end;
+   }
+   gaps.push({start, end: contentEnd, depth});
+   if (gaps.every(gap => /^[ \t\r\n]*$/u.test(source.slice(gap.start, gap.end)))) {
+    for (const gap of gaps) {
+     edits.push({...gap, text: '\n' + '  '.repeat(gap.depth)});
+    }
+   }
+  }
+  for (const child of children) visit(child, depth + 1, preserve);
+ }
+
+ visit(doc.documentElement, 0, false);
+ const rootStart = ranges.get(doc.documentElement).start;
+ if (rootStart && source.slice(0, rootStart).trim()) {
+  const gapStart = source.slice(0, rootStart).trimEnd().length;
+  edits.push({start: gapStart, end: rootStart, text: '\n'});
+ }
+ const formatted = [];
+ let offset = 0;
+ for (const edit of edits.sort((a, b) => a.start - b.start)) {
+  formatted.push(source.slice(offset, edit.start), edit.text);
+  offset = edit.end;
+ }
+ return formatted.join('') + source.slice(offset);
 }
 
 function syncSourceScroll() {
@@ -525,6 +585,18 @@ sourceEditor.addEventListener('input', () => {
  highlightSource();
  previewTimer = setTimeout(validateSource, 300);
 });
+
+byId('indent-tei').onclick = () => {
+ try {
+  const source = sourceEditor.value;
+  const formatted = indentTEI(source);
+  if (formatted === source) return;
+  sourceEditor.value = formatted;
+  sourceEditor.dispatchEvent(new Event('input'));
+ } catch (error) {
+  showSourceError(error.message);
+ }
+};
 
 downloadButton.onclick = () => {
  const url = URL.createObjectURL(new Blob([sourceEditor.value], {type: 'application/tei+xml;charset=utf-8'}));
