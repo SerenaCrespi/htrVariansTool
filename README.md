@@ -39,8 +39,9 @@ python3 -m venv .venv
 
 Open `/variants-visualizer.html` on the backend's local address. The editor
 validates drafts against the bundled TEI P5 4.12.0 `tei_all` Relax NG schema.
-An invalid draft stays editable while preview updates and downloads wait for a
-valid document. Project-specific ODD and Schematron rules are outside this
+The uploaded edition can be read while validation runs and when the source
+needs corrections. An invalid draft stays editable while preview updates and
+downloads wait for a valid document. Project-specific ODD and Schematron rules are outside this
 validation. The bundled schema is distributed by the
 [TEI Consortium](https://www.tei-c.org/Vault/P5/4.12.0/) under CC BY and BSD-2.
 

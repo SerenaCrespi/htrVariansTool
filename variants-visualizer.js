@@ -485,13 +485,15 @@ function cancelValidation() {
  validation?.abort();
 }
 
-async function validateSource(preserveView) {
+async function validateSource({original = false} = {}) {
  validation?.abort();
  const request = new AbortController();
  validation = request;
  const source = sourceEditor.value;
  try {
   const next = parseTEI(source);
+  // The uploaded edition remains readable while its source is checked.
+  if (original) displayEdition(next);
   const response = await fetch('/api/validate-tei', {
    method: 'POST', body: source, signal: request.signal,
   });
@@ -501,7 +503,7 @@ async function validateSource(preserveView) {
   const {error} = await response.json();
   if (!response.ok || error) throw Error(error || 'TEI validation failed.');
   if (request.signal.aborted) return;
-  displayEdition(next, preserveView);
+  if (!original) displayEdition(next, Boolean(edition));
   showSourceError();
  } catch (error) {
   if (request.signal.aborted) return;
@@ -515,7 +517,7 @@ sourceEditor.addEventListener('input', () => {
  downloadButton.disabled = true;
  colorSource();
  highlightSource();
- previewTimer = setTimeout(() => validateSource(Boolean(edition)), 300);
+ previewTimer = setTimeout(validateSource, 300);
 });
 
 downloadButton.onclick = () => {
@@ -581,7 +583,7 @@ byId('export-file').onchange = async event => {
   colorSource();
   showSourceError();
   downloadButton.disabled = true;
-  await validateSource(false);
+  await validateSource({original: true});
  } catch (error) {
   if (load !== loadNumber) return;
   byId('status').textContent = error instanceof SyntaxError ? 'The JSON file is invalid.' : error.message;
