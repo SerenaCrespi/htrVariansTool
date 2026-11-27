@@ -7,6 +7,16 @@ const content = byId('content');
 const details = byId('details');
 const witnessSelect = byId('wit');
 const highlight = byId('showAll');
+const sourceEditor = byId('tei-source');
+const sourceHighlight = byId('tei-highlight');
+const sourceError = byId('tei-error');
+const downloadButton = byId('download-tei');
+const swapButton = byId('swap-panels');
+let previewTimer;
+let sourceName;
+let hovered = -1;
+let focused = -1;
+let highlightedRange;
 let edition;
 let loci = [];
 let active = -1;
@@ -21,12 +31,75 @@ function element(tag, text, className) {
 
 function parseTEI(source) {
  const doc = new DOMParser().parseFromString(source, 'application/xml');
- if (doc.querySelector('parsererror')) throw Error('The XML is invalid.');
+ const error = [...doc.getElementsByTagNameNS('*', 'parsererror')].find(node =>
+  ['http://www.mozilla.org/newlayout/xml/parsererror.xml', 'http://www.w3.org/1999/xhtml'].includes(node.namespaceURI));
+ if (error) throw Error(error.querySelector('div')?.textContent.trim() || 'The XML is invalid.');
  const body = doc.getElementsByTagNameNS(TEI, 'body')[0];
  const witnesses = new Map([...doc.getElementsByTagNameNS(TEI, 'witness')]
   .map(node => [node.getAttributeNS(XML, 'id'), node.textContent.trim()]).filter(([id]) => id));
  if (!body || !witnesses.size) throw Error('The TEI must contain a text body and a witness list.');
- return {body, witnesses};
+ return {body, witnesses, source, ranges: sourceRanges(doc, source)};
+}
+
+// DOMParser resolves namespaces but does not expose source offsets. Pair the
+// parsed elements with the literal start tags, skipping XML comments and declarations.
+function sourceRanges(doc, source) {
+ const markup = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE(?:[^"'[>]|"[^"]*"|'[^']*')*(?:\[(?:<!--[^]*?-->|<\?[^]*?\?>|"[^"]*"|'[^']*'|[^"'\]])*\]\s*)?>|<\/?[^\s<>/!?]+(?:[^"'<>]|"[^"]*"|'[^']*')*>/gu;
+ const parsed = [...doc.getElementsByTagName('*')];
+ const ranges = new WeakMap();
+ const open = [];
+ let index = 0;
+ for (const match of source.matchAll(markup)) {
+  const tag = match[0];
+  if (tag.startsWith('<!') || tag.startsWith('<?')) continue;
+  const name = tag.match(/^<\/?([^\s/>]+)/u)[1];
+  const end = match.index + tag.length;
+  if (tag.startsWith('</')) {
+   const entry = open.pop();
+   if (entry?.node.nodeName !== name) return new WeakMap();
+   ranges.set(entry.node, {start: entry.start, end});
+  } else {
+   const node = parsed[index++];
+   if (node?.nodeName !== name || (open.at(-1)?.node || doc) !== node.parentNode) return new WeakMap();
+   if (tag.endsWith('/>')) ranges.set(node, {start: match.index, end});
+   else open.push({node, start: match.index});
+  }
+ }
+ return index === parsed.length && open.length === 0 ? ranges : new WeakMap();
+}
+
+function syncSourceScroll() {
+ sourceHighlight.style.transform = `translate(${-sourceEditor.scrollLeft}px, ${-sourceEditor.scrollTop}px)`;
+}
+
+function highlightSource(reveal = false) {
+ const index = hovered >= 0 ? hovered : focused >= 0 ? focused : active;
+ const range = edition?.source === sourceEditor.value ? loci[index]?.range : undefined;
+ if (range !== highlightedRange) {
+  highlightedRange = range;
+  sourceHighlight.replaceChildren();
+  if (range) {
+   sourceHighlight.append(edition.source.slice(0, range.start),
+    element('mark', edition.source.slice(range.start, range.end)));
+  }
+ }
+ if (range && reveal) {
+  const before = edition.source.slice(0, range.start);
+  const lineHeight = Number.parseFloat(getComputedStyle(sourceEditor).lineHeight);
+  const top = (before.split('\n').length - 1) * lineHeight;
+  const height = (edition.source.slice(range.start, range.end).split('\n').length) * lineHeight;
+  const bottom = top + Math.min(height, sourceEditor.clientHeight / 2) + 12;
+  if (top < sourceEditor.scrollTop || bottom > sourceEditor.scrollTop + sourceEditor.clientHeight) {
+   sourceEditor.scrollTop = Math.max(0, top - sourceEditor.clientHeight / 3);
+  }
+  syncSourceScroll();
+  const marker = sourceHighlight.querySelector('mark').getClientRects()[0];
+  const viewport = sourceEditor.getBoundingClientRect();
+  if (marker && (marker.left < viewport.left || marker.left + 24 > viewport.left + sourceEditor.clientWidth)) {
+   sourceEditor.scrollLeft += marker.left - viewport.left - 12;
+  }
+ }
+ syncSourceScroll();
 }
 
 function parseJSON(source) {
@@ -61,7 +134,7 @@ function parseJSON(source) {
  return {data, witnesses};
 }
 
-function addLocus(base, reading, entries, id = '') {
+function addLocus(base, reading, entries, id = '', range) {
  const index = loci.length;
  const wrapper = element('span');
  const button = element('button', undefined, 'apparatus');
@@ -69,15 +142,21 @@ function addLocus(base, reading, entries, id = '') {
  button.type = 'button';
  button.setAttribute('aria-controls', 'details');
  button.addEventListener('click', () => showDetails(active === index ? -1 : index));
+ if (range) {
+  button.addEventListener('pointerenter', () => { hovered = index; highlightSource(true); });
+  button.addEventListener('pointerleave', () => { hovered = -1; highlightSource(); });
+  button.addEventListener('focus', () => { focused = index; highlightSource(true); });
+  button.addEventListener('blur', () => { focused = -1; highlightSource(); });
+ }
  wrapper.append(button, plain);
- loci.push({button, plain, base, reading, entries, id});
+ loci.push({button, plain, base, reading, entries, id, range});
  return wrapper;
 }
 
 const witnessIds = node => (node.getAttribute('wit') || '').trim().split(/\s+/)
  .filter(Boolean).map(id => id.replace(/^#/, ''));
 
-function renderTEI(node) {
+function renderTEI(node, ranges) {
  if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) {
   return document.createTextNode(node.nodeValue);
  }
@@ -91,9 +170,9 @@ function renderTEI(node) {
   }));
   if (lemma) entries.unshift({label: 'Base reading', witnesses: witnessIds(lemma), text: base});
   return addLocus(base, witness => entries.find(entry => entry.witnesses.includes(witness))?.text ?? base,
-   entries, node.getAttributeNS(XML, 'id'));
+   entries, node.getAttributeNS(XML, 'id'), ranges.get(node));
  }
- for (const child of node.childNodes) children.append(renderTEI(child));
+ for (const child of node.childNodes) children.append(renderTEI(child, ranges));
  const tags = {div: ['section', 'section'], head: ['h2'], p: ['p'], lg: ['div', 'poem'],
   l: ['div', 'verse'], sp: ['section', 'speech'], speaker: ['strong'], lb: ['br']};
  const tag = node.namespaceURI === TEI && Object.hasOwn(tags, node.localName) && tags[node.localName];
@@ -253,6 +332,7 @@ function showDetails(index) {
  details.hidden = index < 0;
  details.replaceChildren();
  loci.forEach(({button}, i) => button.setAttribute('aria-expanded', String(i === index)));
+ highlightSource(index >= 0);
  if (index < 0) return;
  const locus = loci[index];
  if (locus.id) details.append(element('strong', locus.id));
@@ -268,6 +348,7 @@ function showDetails(index) {
 }
 
 function refresh() {
+ hovered = focused = -1;
  const witness = witnessSelect.selectedOptions[0]?.dataset.witness;
  for (const button of byId('stemma-tree').querySelectorAll('button')) {
   button.setAttribute('aria-pressed', String(button.dataset.witness === witness));
@@ -310,34 +391,107 @@ byId('back-to-workspace').addEventListener('click', event => {
 byId('prev').onclick = () => step(-1);
 byId('next').onclick = () => step(1);
 witnessSelect.onchange = highlight.onchange = refresh;
+function displayEdition(next, preserveView = false) {
+ const previousLoci = loci;
+ const witness = preserveView ? witnessSelect.selectedOptions[0]?.dataset.witness : undefined;
+ const previousActiveId = preserveView ? loci[active]?.id : undefined;
+ const scrollTop = preserveView ? content.scrollTop : 0;
+ let rendered;
+ loci = [];
+ try {
+  rendered = next.data ? renderJSON(next.data) : renderTEI(next.body, next.ranges);
+ } catch (error) {
+  loci = previousLoci;
+  throw error;
+ }
+ edition = next;
+ witnessSelect.replaceChildren(element('option', 'Compare all witnesses'));
+ for (const [id, name] of edition.witnesses) {
+  const option = element('option', name || id);
+  option.dataset.witness = id;
+  witnessSelect.append(option);
+  if (id === witness) option.selected = true;
+ }
+ content.after(details);
+ content.replaceChildren(rendered);
+ content.hidden = byId('toolbar').hidden = false;
+ byId('tei-panel').hidden = swapButton.hidden = Boolean(next.data);
+ byId('status').textContent = next.data ? 'JSON collation · review decisions are shown in the variant details.' : 'TEI edition';
+ renderStemma();
+ refresh();
+ if (previousActiveId && highlight.checked) showDetails(loci.findIndex(locus => locus.id === previousActiveId));
+ content.scrollTop = scrollTop;
+ if (!preserveView) sourceEditor.scrollTo(0, 0);
+}
+
+function showSourceError(message = '') {
+ sourceError.textContent = message;
+ sourceError.hidden = !message;
+ sourceEditor.setAttribute('aria-invalid', String(Boolean(message)));
+ downloadButton.disabled = Boolean(message);
+}
+
+sourceEditor.addEventListener('scroll', syncSourceScroll);
+sourceEditor.addEventListener('input', () => {
+ clearTimeout(previewTimer);
+ downloadButton.disabled = true;
+ highlightSource();
+ previewTimer = setTimeout(() => {
+  try {
+   displayEdition(parseTEI(sourceEditor.value), true);
+   showSourceError();
+  } catch (error) {
+   showSourceError(error.message);
+  }
+ }, 300);
+});
+
+downloadButton.onclick = () => {
+ const url = URL.createObjectURL(new Blob([sourceEditor.value], {type: 'application/tei+xml;charset=utf-8'}));
+ const link = element('a');
+ link.href = url;
+ link.download = sourceName;
+ link.click();
+ setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+function setSourceFirst(sourceFirst) {
+ byId('reading-panels').classList.toggle('source-first', sourceFirst);
+ swapButton.setAttribute('aria-pressed', String(sourceFirst));
+}
+
+try {
+ setSourceFirst(localStorage.getItem('variants-tei-source-first') === 'true');
+} catch {
+ // The layout can still be switched when browser storage is unavailable.
+}
+
+swapButton.onclick = () => {
+ const sourceFirst = swapButton.getAttribute('aria-pressed') !== 'true';
+ setSourceFirst(sourceFirst);
+ try {
+  localStorage.setItem('variants-tei-source-first', String(sourceFirst));
+ } catch {
+  // Keep the current layout for this page.
+ }
+};
+
 byId('export-file').onchange = async event => {
  const file = event.target.files[0];
  if (!file) return;
  const load = ++loadNumber;
- let previousLoci;
  try {
-  const source = (await file.text()).trimStart();
+  const source = (await file.text()).replace(/\r\n?/g, '\n');
   if (load !== loadNumber) return;
-  const next = source.startsWith('<') ? parseTEI(source) : parseJSON(source);
-  previousLoci = loci;
-  loci = [];
-  const rendered = next.data ? renderJSON(next.data) : renderTEI(next.body);
-  edition = next;
-  witnessSelect.replaceChildren(element('option', 'Compare all witnesses'));
-  for (const [id, name] of edition.witnesses) {
-   const option = element('option', name || id);
-   option.dataset.witness = id;
-   witnessSelect.append(option);
-  }
-  content.after(details);
-  content.replaceChildren(rendered);
-  content.hidden = byId('toolbar').hidden = false;
-  byId('status').textContent = edition.data ? 'JSON collation · review decisions are shown in the variant details.' : 'TEI edition';
-  renderStemma();
-  refresh();
+  const next = source.trimStart().startsWith('<') ? parseTEI(source) : parseJSON(source);
+  clearTimeout(previewTimer);
+  displayEdition(next);
+  sourceEditor.value = next.source ?? '';
+  sourceName = file.name;
+  showSourceError();
+  highlightSource();
  } catch (error) {
   if (load !== loadNumber) return;
-  if (previousLoci) loci = previousLoci;
   byId('status').textContent = error instanceof SyntaxError ? 'The JSON file is invalid.' : error.message;
  }
 };

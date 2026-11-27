@@ -163,6 +163,63 @@ select { min-width: 0; max-width: 100%; font-weight: 400 }
  align-items: start;
  gap: 12px;
 }
+main:has(#tei-panel:not([hidden])) { max-width: 1600px }
+#reading-panels:has(#tei-panel:not([hidden])) {
+ grid-column: 1 / -1;
+ display: grid;
+ grid-template-columns: repeat(2, minmax(0, 1fr));
+ gap: 12px;
+}
+#reading-panels.source-first #tei-panel { order: -1 }
+#reading-panels:has(#tei-panel:not([hidden])) #content {
+ height: max(340px, 66vh);
+ overflow: auto;
+ padding: clamp(18px, 3vw, 40px);
+}
+#tei-panel {
+ min-width: 0;
+ display: flex;
+ flex-direction: column;
+ height: max(340px, 66vh);
+ background: var(--paper);
+ border: 1px solid var(--line);
+ border-radius: 7px;
+}
+.source-header {
+ display: flex;
+ flex-wrap: wrap;
+ align-items: center;
+ justify-content: space-between;
+ gap: 8px;
+ padding: 9px 12px;
+ background: var(--sage-pale);
+ color: var(--forest-deep);
+ border-radius: 6px 6px 0 0;
+}
+.source-header label { font-weight: 700 }
+#tei-error { margin: 0; padding: 6px 12px; color: #8a1526 }
+.source-editor { position: relative; flex: 1; min-height: 0; overflow: hidden }
+#tei-source, #tei-highlight {
+ position: absolute;
+ inset: 0;
+ margin: 0;
+ border: 0;
+ padding: 12px;
+ font: 13px/20px ui-monospace, monospace;
+ tab-size: 2;
+ white-space: pre;
+}
+#tei-source {
+ width: 100%;
+ height: 100%;
+ resize: none;
+ background: transparent;
+ color: var(--ink);
+}
+#tei-source:focus-visible { outline-offset: -3px }
+#tei-highlight { color: transparent; pointer-events: none }
+#tei-highlight mark { color: transparent; background: #ead9a4 }
+#reading-panels:has(#tei-panel:not([hidden])) + #stemma { grid-column: 1 / -1 }
 .edition-layout:has(#stemma[hidden]) { display: block }
 #stemma {
  border: 1px solid var(--line);
@@ -197,7 +254,9 @@ select { min-width: 0; max-width: 100%; font-weight: 400 }
 }
 .stemma-branches .btn { padding: 4px 7px; text-align: left; overflow-wrap: anywhere }
 .stemma-branches .btn[aria-pressed="true"] { background: var(--gold-pale) }
-@media (max-width: 760px) { .edition-layout { grid-template-columns: minmax(0, 1fr) } }
+@media (max-width: 760px) {
+ .edition-layout, #reading-panels:has(#tei-panel:not([hidden])) { grid-template-columns: minmax(0, 1fr) }
+}
 @media (max-width: 580px) {
  .masthead-inner { padding: 8px 13px }
  .brand { gap: 9px }
@@ -231,12 +290,26 @@ select { min-width: 0; max-width: 100%; font-weight: 400 }
  <button class="btn" id="prev" type="button">← Previous variant</button>
  <button class="btn" id="next" type="button">Next variant →</button>
 </div>
+<button class="btn" id="swap-panels" type="button" aria-pressed="false" hidden>⇄ Swap panels</button>
 <span class="counter" id="counter" role="status"></span>
 </div>
 <div class="edition-layout">
- <div>
-  <article id="content" aria-label="Edition" hidden></article>
-  <aside id="details" class="details" aria-label="Variant readings" aria-live="polite" hidden></aside>
+ <div id="reading-panels">
+  <div>
+   <article id="content" aria-label="Edition" hidden></article>
+   <aside id="details" class="details" aria-label="Variant readings" aria-live="polite" hidden></aside>
+  </div>
+  <section id="tei-panel" aria-label="TEI editor" hidden>
+   <div class="source-header">
+    <label for="tei-source">TEI source</label>
+    <button class="btn" id="download-tei" type="button">Download TEI</button>
+   </div>
+   <p id="tei-error" role="status" hidden></p>
+   <div class="source-editor">
+    <pre id="tei-highlight" aria-hidden="true"></pre>
+    <textarea id="tei-source" wrap="off" spellcheck="false" aria-describedby="tei-error"></textarea>
+   </div>
+  </section>
  </div>
  <aside id="stemma" aria-labelledby="stemma-title" hidden>
   <h2 id="stemma-title">Exploratory stemma</h2>
@@ -250,6 +323,6 @@ select { min-width: 0; max-width: 100%; font-weight: 400 }
  </aside>
 </div>
 </main>
-<script src="/variants-visualizer.js?v=robustness" defer></script>
+<script src="/variants-visualizer.js?v=tei-editor" defer></script>
 </body>
 </html>
