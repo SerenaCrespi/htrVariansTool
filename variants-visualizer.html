@@ -164,6 +164,7 @@ select { min-width: 0; max-width: 100%; font-weight: 400 }
  align-items: start;
  gap: 12px;
 }
+/* TEI uses two independent scroll panes. JSON keeps the edition and stemma layout. */
 main:has(#tei-panel:not([hidden])) { max-width: 1600px }
 #reading-panels:has(#tei-panel:not([hidden])) {
  grid-column: 1 / -1;
@@ -209,6 +210,7 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
 }
 .source-validation a { color: var(--forest-deep) }
 #tei-error { margin: 0; padding: 6px 12px; color: #8a1526 }
+/* The textarea handles editing and selection. The synchronized pre draws the colored text. */
 .source-editor { position: relative; flex: 1; min-height: 0; overflow: hidden }
 #tei-source, #tei-highlight {
  position: absolute;
@@ -236,6 +238,7 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
 .xml-attribute { color: #824011 }
 .xml-value { color: #216448 }
 .xml-comment { color: #59645f }
+/* Apply the same selection style across the plain text and the syntax-color spans. */
 #tei-highlight::highlight(tei-locus),
 #tei-highlight span::highlight(tei-locus) {
  background-color: #f1dda2;
@@ -243,6 +246,7 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
  text-decoration-color: #6d0f1d;
  text-decoration-skip-ink: none;
 }
+/* Let the browser draw the native text in high-contrast mode. */
 @media (forced-colors: active) {
  #tei-highlight { visibility: hidden }
  #tei-source, #tei-source::selection { color: revert }
@@ -327,7 +331,8 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
    <article id="content" aria-label="Edition" hidden></article>
    <aside id="details" class="details" aria-label="Variant readings" aria-live="polite" hidden></aside>
   </div>
-  <section id="tei-panel" aria-label="TEI editor" hidden>
+  <!-- The viewer reveals this panel for TEI uploads. -->
+ <section id="tei-panel" aria-label="TEI editor" hidden>
    <div class="source-header">
     <label for="tei-source">TEI source</label>
     <div class="source-actions">
@@ -341,6 +346,7 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
    </div>
    <p id="tei-error" role="status" hidden></p>
    <div class="source-editor">
+    <!-- Screen readers use the textarea. The pre is its visual mirror. -->
     <pre id="tei-highlight" aria-hidden="true"></pre>
     <textarea id="tei-source" wrap="off" spellcheck="false" aria-describedby="tei-validation-state tei-error"></textarea>
    </div>

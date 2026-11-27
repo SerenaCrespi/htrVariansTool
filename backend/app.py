@@ -932,6 +932,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _validate_tei(self):
+        """Validate the UTF-8 XML body and return a message the editor can show."""
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= MAX_BODY:
@@ -940,6 +941,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(400, {"error": str(exc)})
             return
         try:
+            # Keep lxml optional for the rest of the application.
             from tei_validation import validate_tei
 
             error = validate_tei(self.rfile.read(length))
@@ -953,6 +955,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 self._validate_tei()
             except (BrokenPipeError, ConnectionResetError):
+                # Typing can cancel an in-flight validation request.
                 pass
             return
         # The browser sends ALTO bundles (or pre-segmented sentences) here.

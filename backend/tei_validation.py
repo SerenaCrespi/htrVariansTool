@@ -9,14 +9,17 @@ _schema_lock = Lock()
 
 @lru_cache(maxsize=1)
 def _schema():
+    """Compile the bundled grammar once and reuse it for later requests."""
     from lxml import etree
 
     return etree.RelaxNG(file=str(Path(__file__).with_name("tei_all.rng")))
 
 
 def validate_tei(source):
+    """Return a readable validation error, or None for a valid document."""
     from lxml import etree
 
+    # The browser sends UTF-8. Parse the draft without expanding external entities.
     parser = etree.XMLParser(
         encoding="UTF-8", resolve_entities=False, load_dtd=False, no_network=True
     )
@@ -28,7 +31,8 @@ def validate_tei(source):
     if root.getroottree().docinfo.doctype:
         return "Remove the DOCTYPE declaration to validate the TEI."
 
-    # The validator's error log belongs to the shared schema instance.
+    # Hold the lock through validation and error retrieval so concurrent
+    # requests each get the diagnostic for their own document.
     with _schema_lock:
         schema = _schema()
         if schema.validate(root):

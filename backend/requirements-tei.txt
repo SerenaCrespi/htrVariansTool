@@ -1,1 +1,2 @@
+# Optional dependency for the TEI editor validation endpoint.
 lxml>=5.0

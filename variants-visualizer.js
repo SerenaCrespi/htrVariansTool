@@ -12,15 +12,17 @@ const sourceHighlight = byId('tei-highlight');
 const sourceError = byId('tei-error');
 const downloadButton = byId('download-tei');
 const swapButton = byId('swap-panels');
+// The textarea holds the draft. The edition and its offsets describe the last rendered source.
 let previewTimer;
 let sourceName;
 let hovered = -1;
 let focused = -1;
 let highlightedRange;
-let sourceMarkup;
-let validation;
+let coloredSource;
+let validationRequest;
 let edition;
 let loci = [];
+// The active locus owns the open details. A click can pin it against hover and caret changes.
 let active = -1;
 let pinned = false;
 let loadNumber = 0;
@@ -32,6 +34,7 @@ function element(tag, text, className) {
  return node;
 }
 
+// Browser XML parsers expose syntax errors in different namespaces.
 function parseXML(source) {
  const doc = new DOMParser().parseFromString(source, 'application/xml');
  const error = [...doc.getElementsByTagNameNS('*', 'parsererror')].find(node =>
@@ -40,6 +43,7 @@ function parseXML(source) {
  return doc;
 }
 
+// Check the pieces the viewer needs. The backend checks the full TEI schema separately.
 function parseTEI(source) {
  const doc = parseXML(source);
  const body = doc.getElementsByTagNameNS(TEI, 'body')[0];
@@ -49,6 +53,7 @@ function parseTEI(source) {
  return {body, witnesses, source, ranges: sourceRanges(doc, source)};
 }
 
+// Read literal markup for coloring and source offsets. Quoted values may contain >.
 const xmlMarkup = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE(?:[^"'[>]|"[^"]*"|'[^']*')*(?:\[(?:<!--[^]*?-->|<\?[^]*?\?>|"[^"]*"|'[^']*'|[^"'\]])*\]\s*)?>|<\/?[^\s<>/!?]+(?:[^"'<>]|"[^"]*"|'[^']*')*>/gu;
 
 // DOMParser resolves namespaces but does not expose source offsets. Pair the
@@ -56,6 +61,7 @@ const xmlMarkup = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOC
 function sourceRanges(doc, source) {
  const parsed = [...doc.getElementsByTagName('*')];
  const ranges = new WeakMap();
+ // Keep nested opening tags until their matching end tags provide the full source spans.
  const open = [];
  let index = 0;
  for (const match of source.matchAll(xmlMarkup)) {
@@ -74,6 +80,7 @@ function sourceRanges(doc, source) {
    else open.push({node, start: match.index, contentStart: end});
   }
  }
+ // If the parsed tree and literal tags diverge, there are no reliable offsets.
  return index === parsed.length && open.length === 0 ? ranges : new WeakMap();
 }
 
@@ -94,6 +101,7 @@ function indentTEI(source) {
  }
  const edits = [];
 
+ // xml:space is inherited unless a descendant explicitly sets it back to default.
  function visit(node, depth, preserve) {
   const space = node.getAttributeNS(XML, 'space');
   preserve = space === 'preserve' || (space !== 'default' && preserve);
@@ -108,6 +116,7 @@ function indentTEI(source) {
     start = range.end;
    }
    gaps.push({start, end: contentEnd, depth});
+   // Edits are safe only when the gaps contain XML whitespace alone.
    if (gaps.every(gap => /^[ \t\r\n]*$/u.test(source.slice(gap.start, gap.end)))) {
     for (const gap of gaps) {
      edits.push({...gap, text: '\n' + '  '.repeat(gap.depth)});
@@ -123,6 +132,7 @@ function indentTEI(source) {
   const gapStart = source.slice(0, rootStart).trimEnd().length;
   edits.push({start: gapStart, end: rootStart, text: '\n'});
  }
+ // Apply the replacements in source order so every offset still refers to the original.
  const formatted = [];
  let offset = 0;
  for (const edit of edits.sort((a, b) => a.start - b.start)) {
@@ -132,14 +142,16 @@ function indentTEI(source) {
  return formatted.join('') + source.slice(offset);
 }
 
+// The colored copy follows both scroll axes of the native textarea.
 function syncSourceScroll() {
  sourceHighlight.style.transform = `translate(${-sourceEditor.scrollLeft}px, ${-sourceEditor.scrollTop}px)`;
 }
 
+// Build the colored copy with text nodes so literal XML remains visible and inert.
 function colorSource() {
  const source = sourceEditor.value;
- if (source === sourceMarkup) return;
- sourceMarkup = source;
+ if (source === coloredSource) return;
+ coloredSource = source;
  highlightedRange = undefined;
  CSS.highlights?.delete('tei-locus');
  const fragment = document.createDocumentFragment();
@@ -169,8 +181,10 @@ function colorSource() {
  sourceHighlight.replaceChildren(fragment);
 }
 
+// A pinned locus wins. Otherwise preview hover or focus before falling back to the open details.
 function highlightSource(reveal = false) {
  const index = pinned ? active : hovered >= 0 ? hovered : focused >= 0 ? focused : active;
+ // Offsets can point at the wrong text while an edited draft is awaiting validation.
  const range = edition?.source === sourceEditor.value ? loci[index]?.range : undefined;
  if (range !== highlightedRange?.offsets) {
   highlightedRange = undefined;
@@ -180,12 +194,14 @@ function highlightSource(reveal = false) {
    const walker = document.createTreeWalker(sourceHighlight, NodeFilter.SHOW_TEXT);
    let node = walker.nextNode();
    let offset = 0;
+   // A single highlighted line can cross several colored spans in the mirrored source.
    function advanceTo(position) {
     while (position > offset + node.length) {
      offset += node.length;
      node = walker.nextNode();
     }
    }
+   // Keep spaces between words in the selection and trim surrounding indentation.
    for (const match of sourceEditor.value.slice(range.start, range.end).matchAll(/[^\n]+/gu)) {
     const line = match[0].trim();
     if (!line) continue;
@@ -206,6 +222,7 @@ function highlightSource(reveal = false) {
    highlightedRange = {offsets: range, first: selections[0]};
   }
  }
+ // Reveal a selection made in the edition without moving focus into the textarea.
  if (range && reveal) {
   const before = edition.source.slice(0, range.start);
   const lineHeight = Number.parseFloat(getComputedStyle(sourceEditor).lineHeight);
@@ -264,6 +281,7 @@ function addLocus(base, reading, entries, id = '', range) {
  const plain = element('span', undefined, 'plain-reading');
  button.type = 'button';
  button.setAttribute('aria-controls', 'details');
+ // TEI loci with source offsets support pinning. JSON loci retain their expand/collapse behavior.
  button.addEventListener('click', () => {
   const close = active === index && (pinned || !range);
   pinned = Boolean(range) && !close;
@@ -290,6 +308,7 @@ function renderTEI(node, ranges) {
  const children = document.createDocumentFragment();
  if (node.nodeType !== Node.ELEMENT_NODE) return children;
  if (node.namespaceURI === TEI && node.localName === 'app') {
+  // The lemma is the default reading. Each reading carries its own witness references.
   const lemma = [...node.children].find(child => child.namespaceURI === TEI && child.localName === 'lem');
   const base = lemma?.textContent.trim() || '';
   const entries = [...node.getElementsByTagNameNS(TEI, 'rdg')].map(reading => ({
@@ -454,6 +473,7 @@ function renderStemma() {
  tree.append(stemmaBranches(clusterWitnesses(witnesses, evidence)));
 }
 
+// Keep the edition reading, details, and source highlight on the same apparatus entry.
 function showDetails(index, revealSource = true) {
  active = index;
  if (index < 0) pinned = false;
@@ -480,16 +500,18 @@ function showDetails(index, revealSource = true) {
  else content.append(details);
 }
 
-function openApparatusAtCaret(explicit = false) {
+// A click can replace a pinned selection. Ordinary caret movement follows an unpinned locus.
+function openApparatusAtCaret(fromClick = false) {
  const {selectionStart, selectionEnd} = sourceEditor;
- if ((!explicit && pinned) || document.activeElement !== sourceEditor || selectionStart !== selectionEnd ||
+ if ((!fromClick && pinned) || document.activeElement !== sourceEditor || selectionStart !== selectionEnd ||
      edition?.source !== sourceEditor.value) return;
  const index = loci.findIndex(({range}) => range && range.start <= selectionStart && selectionStart < range.end);
- if (index < 0 || (!explicit && index === active)) return;
+ if (index < 0 || (!fromClick && index === active)) return;
 
- if (explicit) pinned = true;
+ if (fromClick) pinned = true;
  hovered = focused = -1;
  showDetails(index, false);
+ // Scroll inside the edition so the user can keep editing XML without losing the caret.
  const reading = highlight.checked ? loci[index].button : loci[index].plain;
  const viewer = content.getBoundingClientRect();
  const top = reading.getBoundingClientRect().top - viewer.top;
@@ -543,6 +565,7 @@ byId('back-to-workspace').addEventListener('click', event => {
 byId('prev').onclick = () => step(-1);
 byId('next').onclick = () => step(1);
 witnessSelect.onchange = highlight.onchange = refresh;
+// Rebuild the edition while retaining the witness and scroll position during live edits.
 function displayEdition(next, preserveView = false) {
  const previousLoci = loci;
  const witness = preserveView ? witnessSelect.selectedOptions[0]?.dataset.witness : undefined;
@@ -554,6 +577,7 @@ function displayEdition(next, preserveView = false) {
  try {
   rendered = next.data ? renderJSON(next.data) : renderTEI(next.body, next.ranges);
  } catch (error) {
+  // Keep the old controls usable if rendering fails before the DOM is replaced.
   loci = previousLoci;
   throw error;
  }
@@ -573,6 +597,7 @@ function displayEdition(next, preserveView = false) {
  byId('status').textContent = next.data ? 'JSON collation · review decisions are shown in the variant details.' : 'TEI edition';
  renderStemma();
  refresh();
+ // Apparatus order may change during editing. Restore the selection by xml:id.
  if (previousActiveId && highlight.checked) {
   const index = loci.findIndex(locus => locus.id === previousActiveId);
   pinned = wasPinned && index >= 0;
@@ -582,7 +607,8 @@ function displayEdition(next, preserveView = false) {
  if (!preserveView) sourceEditor.scrollTo(0, 0);
 }
 
-function showSourceError(message = '', pending = false) {
+// Pending and rejected drafts stay editable and cannot be downloaded.
+function setValidationStatus(message = '', pending = false) {
  byId('tei-validation-state').textContent = message ? 'Changes blocked' : pending ? 'Checking TEI…' : 'Valid TEI';
  sourceError.textContent = message;
  sourceError.hidden = !message;
@@ -592,13 +618,14 @@ function showSourceError(message = '', pending = false) {
 
 function cancelValidation() {
  clearTimeout(previewTimer);
- validation?.abort();
+ validationRequest?.abort();
 }
 
+// Each request owns one draft snapshot. A later edit aborts it before it can update the preview.
 async function validateSource({original = false} = {}) {
- validation?.abort();
+ validationRequest?.abort();
  const request = new AbortController();
- validation = request;
+ validationRequest = request;
  const source = sourceEditor.value;
  try {
   const next = parseTEI(source);
@@ -615,10 +642,10 @@ async function validateSource({original = false} = {}) {
   if (request.signal.aborted) return;
   if (!original) displayEdition(next, Boolean(edition));
   openApparatusAtCaret();
-  showSourceError();
+  setValidationStatus();
  } catch (error) {
   if (request.signal.aborted) return;
-  showSourceError(error instanceof TypeError ? 'Could not contact the TEI validator.' : error.message);
+  setValidationStatus(error instanceof TypeError ? 'Could not contact the TEI validator.' : error.message);
  }
 }
 
@@ -626,14 +653,16 @@ sourceEditor.addEventListener('scroll', syncSourceScroll);
 sourceEditor.addEventListener('selectionchange', () => openApparatusAtCaret());
 sourceEditor.addEventListener('keyup', () => openApparatusAtCaret());
 sourceEditor.addEventListener('click', () => openApparatusAtCaret(true));
+// Recolor immediately, then wait for a pause in typing before checking the schema.
 sourceEditor.addEventListener('input', () => {
  cancelValidation();
- showSourceError('', true);
+ setValidationStatus('', true);
  colorSource();
  highlightSource();
  previewTimer = setTimeout(validateSource, 300);
 });
 
+// Formatting goes through the same validation path as typing.
 byId('indent-tei').onclick = () => {
  try {
   const source = sourceEditor.value;
@@ -642,10 +671,11 @@ byId('indent-tei').onclick = () => {
   sourceEditor.value = formatted;
   sourceEditor.dispatchEvent(new Event('input'));
  } catch (error) {
-  showSourceError(error.message);
+  setValidationStatus(error.message);
  }
 };
 
+// Export the checked draft as a new local download.
 downloadButton.onclick = () => {
  const url = URL.createObjectURL(new Blob([sourceEditor.value], {type: 'application/tei+xml;charset=utf-8'}));
  const link = element('a');
@@ -655,6 +685,7 @@ downloadButton.onclick = () => {
  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+// Change visual order without replacing either pane or its scroll state.
 function setSourceFirst(sourceFirst) {
  byId('reading-panels').classList.toggle('source-first', sourceFirst);
  swapButton.setAttribute('aria-pressed', String(sourceFirst));
@@ -676,11 +707,13 @@ swapButton.onclick = () => {
  }
 };
 
+// File reads can finish out of order. Only the latest upload can replace the viewer.
 byId('export-file').onchange = async event => {
  const file = event.target.files[0];
  if (!file) return;
  const load = ++loadNumber;
  try {
+  // Match the textarea newline convention so the stored offsets also match the caret.
   const source = (await file.text()).replace(/\r\n?/g, '\n');
   if (load !== loadNumber) return;
   const isTEI = source.trimStart().startsWith('<') || /\.(tei|xml)$/i.test(file.name);
@@ -708,7 +741,7 @@ byId('export-file').onchange = async event => {
   sourceEditor.scrollTo(0, 0);
   sourceName = file.name;
   colorSource();
-  showSourceError('', true);
+  setValidationStatus('', true);
   await validateSource({original: true});
  } catch (error) {
   if (load !== loadNumber) return;
