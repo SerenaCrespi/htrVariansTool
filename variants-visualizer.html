@@ -214,11 +214,22 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
  height: 100%;
  resize: none;
  background: transparent;
- color: var(--ink);
+ color: transparent;
+ caret-color: var(--ink);
 }
+#tei-source::selection { color: transparent; background: #526fa355 }
 #tei-source:focus-visible { outline-offset: -3px }
-#tei-highlight { color: transparent; pointer-events: none }
-#tei-highlight mark { color: transparent; background: #ead9a4 }
+#tei-highlight { color: var(--ink); pointer-events: none }
+.xml-tag { color: #234c8b }
+.xml-apparatus { color: #861e57 }
+.xml-attribute { color: #824011 }
+.xml-value { color: #216448 }
+.xml-comment { color: #59645f }
+#tei-highlight::highlight(tei-locus) { background-color: #f1dda2 }
+@media (forced-colors: active) {
+ #tei-highlight { visibility: hidden }
+ #tei-source, #tei-source::selection { color: revert }
+}
 #reading-panels:has(#tei-panel:not([hidden])) + #stemma { grid-column: 1 / -1 }
 .edition-layout:has(#stemma[hidden]) { display: block }
 #stemma {
@@ -323,6 +334,6 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
  </aside>
 </div>
 </main>
-<script src="/variants-visualizer.js?v=tei-editor" defer></script>
+<script src="/variants-visualizer.js?v=tei-validation" defer></script>
 </body>
 </html>

@@ -17,6 +17,8 @@ let sourceName;
 let hovered = -1;
 let focused = -1;
 let highlightedRange;
+let sourceMarkup;
+let validation;
 let edition;
 let loci = [];
 let active = -1;
@@ -41,15 +43,16 @@ function parseTEI(source) {
  return {body, witnesses, source, ranges: sourceRanges(doc, source)};
 }
 
+const xmlMarkup = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE(?:[^"'[>]|"[^"]*"|'[^']*')*(?:\[(?:<!--[^]*?-->|<\?[^]*?\?>|"[^"]*"|'[^']*'|[^"'\]])*\]\s*)?>|<\/?[^\s<>/!?]+(?:[^"'<>]|"[^"]*"|'[^']*')*>/gu;
+
 // DOMParser resolves namespaces but does not expose source offsets. Pair the
 // parsed elements with the literal start tags, skipping XML comments and declarations.
 function sourceRanges(doc, source) {
- const markup = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE(?:[^"'[>]|"[^"]*"|'[^']*')*(?:\[(?:<!--[^]*?-->|<\?[^]*?\?>|"[^"]*"|'[^']*'|[^"'\]])*\]\s*)?>|<\/?[^\s<>/!?]+(?:[^"'<>]|"[^"]*"|'[^']*')*>/gu;
  const parsed = [...doc.getElementsByTagName('*')];
  const ranges = new WeakMap();
  const open = [];
  let index = 0;
- for (const match of source.matchAll(markup)) {
+ for (const match of source.matchAll(xmlMarkup)) {
   const tag = match[0];
   if (tag.startsWith('<!') || tag.startsWith('<?')) continue;
   const name = tag.match(/^<\/?([^\s/>]+)/u)[1];
@@ -72,15 +75,60 @@ function syncSourceScroll() {
  sourceHighlight.style.transform = `translate(${-sourceEditor.scrollLeft}px, ${-sourceEditor.scrollTop}px)`;
 }
 
+function colorSource() {
+ const source = sourceEditor.value;
+ if (source === sourceMarkup) return;
+ sourceMarkup = source;
+ highlightedRange = undefined;
+ CSS.highlights?.delete('tei-locus');
+ const fragment = document.createDocumentFragment();
+ let offset = 0;
+ for (const match of source.matchAll(xmlMarkup)) {
+  const markup = match[0];
+  fragment.append(source.slice(offset, match.index));
+  offset = match.index + markup.length;
+  if (markup.startsWith('<!') || markup.startsWith('<?')) {
+   fragment.append(element('span', markup, 'xml-comment'));
+   continue;
+  }
+  const tag = /^<\/?[^\s/>]+/u.exec(markup)[0];
+  const apparatus = /(?:^<\/?|:)(?:app|lem|rdg|rdgGrp)$/u.test(tag);
+  fragment.append(element('span', tag, apparatus ? 'xml-apparatus' : 'xml-tag'));
+  const attributes = markup.slice(tag.length);
+  const parts = /([^\s=<>/]+)(\s*=\s*)("[^"]*"|'[^']*')/gu;
+  let end = 0;
+  for (const part of attributes.matchAll(parts)) {
+   fragment.append(attributes.slice(end, part.index), element('span', part[1], 'xml-attribute'),
+    part[2], element('span', part[3], 'xml-value'));
+   end = part.index + part[0].length;
+  }
+  fragment.append(element('span', attributes.slice(end), 'xml-tag'));
+ }
+ fragment.append(source.slice(offset));
+ sourceHighlight.replaceChildren(fragment);
+}
+
 function highlightSource(reveal = false) {
  const index = hovered >= 0 ? hovered : focused >= 0 ? focused : active;
  const range = edition?.source === sourceEditor.value ? loci[index]?.range : undefined;
- if (range !== highlightedRange) {
-  highlightedRange = range;
-  sourceHighlight.replaceChildren();
+ if (range !== highlightedRange?.offsets) {
+  highlightedRange = undefined;
+  CSS.highlights?.delete('tei-locus');
   if (range) {
-   sourceHighlight.append(edition.source.slice(0, range.start),
-    element('mark', edition.source.slice(range.start, range.end)));
+   const selection = document.createRange();
+   const walker = document.createTreeWalker(sourceHighlight, NodeFilter.SHOW_TEXT);
+   let offset = 0;
+   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const end = offset + node.length;
+    if (offset <= range.start && range.start < end) selection.setStart(node, range.start - offset);
+    if (range.end <= end) {
+     selection.setEnd(node, range.end - offset);
+     break;
+    }
+    offset = end;
+   }
+   if (CSS.highlights) CSS.highlights.set('tei-locus', new Highlight(selection));
+   highlightedRange = {offsets: range, selection};
   }
  }
  if (range && reveal) {
@@ -93,7 +141,7 @@ function highlightSource(reveal = false) {
    sourceEditor.scrollTop = Math.max(0, top - sourceEditor.clientHeight / 3);
   }
   syncSourceScroll();
-  const marker = sourceHighlight.querySelector('mark').getClientRects()[0];
+  const marker = highlightedRange.selection.getClientRects()[0];
   const viewport = sourceEditor.getBoundingClientRect();
   if (marker && (marker.left < viewport.left || marker.left + 24 > viewport.left + sourceEditor.clientWidth)) {
    sourceEditor.scrollLeft += marker.left - viewport.left - 12;
@@ -415,6 +463,7 @@ function displayEdition(next, preserveView = false) {
  content.after(details);
  content.replaceChildren(rendered);
  content.hidden = byId('toolbar').hidden = false;
+ witnessSelect.disabled = highlight.disabled = false;
  byId('tei-panel').hidden = swapButton.hidden = Boolean(next.data);
  byId('status').textContent = next.data ? 'JSON collation · review decisions are shown in the variant details.' : 'TEI edition';
  renderStemma();
@@ -431,19 +480,42 @@ function showSourceError(message = '') {
  downloadButton.disabled = Boolean(message);
 }
 
+function cancelValidation() {
+ clearTimeout(previewTimer);
+ validation?.abort();
+}
+
+async function validateSource(preserveView) {
+ validation?.abort();
+ const request = new AbortController();
+ validation = request;
+ const source = sourceEditor.value;
+ try {
+  const next = parseTEI(source);
+  const response = await fetch('/api/validate-tei', {
+   method: 'POST', body: source, signal: request.signal,
+  });
+  if (response.status !== 200 && response.status !== 422 && response.status !== 503) {
+   throw Error('TEI validation is unavailable. Open the viewer through the Varians backend.');
+  }
+  const {error} = await response.json();
+  if (!response.ok || error) throw Error(error || 'TEI validation failed.');
+  if (request.signal.aborted) return;
+  displayEdition(next, preserveView);
+  showSourceError();
+ } catch (error) {
+  if (request.signal.aborted) return;
+  showSourceError(error instanceof TypeError ? 'Could not contact the TEI validator.' : error.message);
+ }
+}
+
 sourceEditor.addEventListener('scroll', syncSourceScroll);
 sourceEditor.addEventListener('input', () => {
- clearTimeout(previewTimer);
+ cancelValidation();
  downloadButton.disabled = true;
+ colorSource();
  highlightSource();
- previewTimer = setTimeout(() => {
-  try {
-   displayEdition(parseTEI(sourceEditor.value), true);
-   showSourceError();
-  } catch (error) {
-   showSourceError(error.message);
-  }
- }, 300);
+ previewTimer = setTimeout(() => validateSource(Boolean(edition)), 300);
 });
 
 downloadButton.onclick = () => {
@@ -483,13 +555,33 @@ byId('export-file').onchange = async event => {
  try {
   const source = (await file.text()).replace(/\r\n?/g, '\n');
   if (load !== loadNumber) return;
-  const next = source.trimStart().startsWith('<') ? parseTEI(source) : parseJSON(source);
-  clearTimeout(previewTimer);
-  displayEdition(next);
-  sourceEditor.value = next.source ?? '';
+  const isTEI = source.trimStart().startsWith('<') || /\.(tei|xml)$/i.test(file.name);
+  if (!isTEI) {
+   const next = parseJSON(source);
+   cancelValidation();
+   displayEdition(next);
+   sourceEditor.value = '';
+   colorSource();
+   return;
+  }
+  cancelValidation();
+  edition = undefined;
+  loci = [];
+  hovered = focused = active = -1;
+  content.after(details);
+  content.replaceChildren();
+  content.hidden = details.hidden = byId('stemma').hidden = true;
+  byId('toolbar').hidden = swapButton.hidden = byId('tei-panel').hidden = false;
+  for (const id of ['prev', 'next', 'wit', 'showAll']) byId(id).disabled = true;
+  byId('counter').textContent = '';
+  byId('status').textContent = 'TEI edition';
+  sourceEditor.value = source;
+  sourceEditor.scrollTo(0, 0);
   sourceName = file.name;
+  colorSource();
   showSourceError();
-  highlightSource();
+  downloadButton.disabled = true;
+  await validateSource(false);
  } catch (error) {
   if (load !== loadNumber) return;
   byId('status').textContent = error instanceof SyntaxError ? 'The JSON file is invalid.' : error.message;

@@ -26,6 +26,24 @@ The backend opens the browser and prints its local address, normally
 `http://127.0.0.1:5010`. Stop the app with **Ctrl+C**. Open the address printed
 by the backend to use the app.
 
+### Validate TEI in the Variants Visualizer
+
+Install the editor's validation dependency in the environment used to run the
+backend:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r backend/requirements-tei.txt
+.venv/bin/python backend/app.py
+```
+
+Open `/variants-visualizer.html` on the backend's local address. The editor
+validates drafts against the bundled TEI P5 4.12.0 `tei_all` Relax NG schema.
+An invalid draft stays editable while preview updates and downloads wait for a
+valid document. Project-specific ODD and Schematron rules are outside this
+validation. The bundled schema is distributed by the
+[TEI Consortium](https://www.tei-c.org/Vault/P5/4.12.0/) under CC BY and BSD-2.
+
 ### Update an existing checkout
 
 The save/resume and export improvements are included in **`main`**. To update:

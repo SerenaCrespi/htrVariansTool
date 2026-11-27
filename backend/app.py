@@ -931,7 +931,30 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _validate_tei(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= MAX_BODY:
+                raise ValueError("Invalid request size (maximum 50 MB).")
+        except ValueError as exc:
+            self._json(400, {"error": str(exc)})
+            return
+        try:
+            from tei_validation import validate_tei
+
+            error = validate_tei(self.rfile.read(length))
+        except ImportError:
+            self._json(503, {"error": "TEI validation requires lxml. Install it in the backend environment."})
+            return
+        self._json(422 if error else 200, {"error": error})
+
     def do_POST(self):
+        if urlparse(self.path).path == "/api/validate-tei":
+            try:
+                self._validate_tei()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
         # The browser sends ALTO bundles (or pre-segmented sentences) here.
         # The server parses, aligns and returns source units plus review data.
         if urlparse(self.path).path != "/api/align":
