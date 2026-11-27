@@ -22,6 +22,7 @@ let validation;
 let edition;
 let loci = [];
 let active = -1;
+let pinned = false;
 let loadNumber = 0;
 
 function element(tag, text, className) {
@@ -169,7 +170,7 @@ function colorSource() {
 }
 
 function highlightSource(reveal = false) {
- const index = hovered >= 0 ? hovered : focused >= 0 ? focused : active;
+ const index = pinned ? active : hovered >= 0 ? hovered : focused >= 0 ? focused : active;
  const range = edition?.source === sourceEditor.value ? loci[index]?.range : undefined;
  if (range !== highlightedRange?.offsets) {
   highlightedRange = undefined;
@@ -255,11 +256,15 @@ function addLocus(base, reading, entries, id = '', range) {
  const plain = element('span', undefined, 'plain-reading');
  button.type = 'button';
  button.setAttribute('aria-controls', 'details');
- button.addEventListener('click', () => showDetails(active === index ? -1 : index));
+ button.addEventListener('click', () => {
+  const close = active === index && (pinned || !range);
+  pinned = Boolean(range) && !close;
+  showDetails(close ? -1 : index);
+ });
  if (range) {
-  button.addEventListener('pointerenter', () => { hovered = index; highlightSource(true); });
+  button.addEventListener('pointerenter', () => { hovered = index; highlightSource(!pinned); });
   button.addEventListener('pointerleave', () => { hovered = -1; highlightSource(); });
-  button.addEventListener('focus', () => { focused = index; highlightSource(true); });
+  button.addEventListener('focus', () => { focused = index; highlightSource(!pinned); });
   button.addEventListener('blur', () => { focused = -1; highlightSource(); });
  }
  wrapper.append(button, plain);
@@ -443,6 +448,7 @@ function renderStemma() {
 
 function showDetails(index, revealSource = true) {
  active = index;
+ if (index < 0) pinned = false;
  details.hidden = index < 0;
  details.replaceChildren();
  loci.forEach(({button, plain}, i) => {
@@ -468,7 +474,7 @@ function showDetails(index, revealSource = true) {
 
 function openApparatusAtCaret() {
  const {selectionStart, selectionEnd} = sourceEditor;
- if (document.activeElement !== sourceEditor || selectionStart !== selectionEnd ||
+ if (pinned || document.activeElement !== sourceEditor || selectionStart !== selectionEnd ||
      edition?.source !== sourceEditor.value) return;
  const index = loci.findIndex(({range}) => range && range.start <= selectionStart && selectionStart < range.end);
  if (index < 0 || index === active) return;
@@ -532,6 +538,7 @@ function displayEdition(next, preserveView = false) {
  const previousLoci = loci;
  const witness = preserveView ? witnessSelect.selectedOptions[0]?.dataset.witness : undefined;
  const previousActiveId = preserveView ? loci[active]?.id : undefined;
+ const wasPinned = pinned;
  const scrollTop = preserveView ? content.scrollTop : 0;
  let rendered;
  loci = [];
@@ -557,7 +564,11 @@ function displayEdition(next, preserveView = false) {
  byId('status').textContent = next.data ? 'JSON collation · review decisions are shown in the variant details.' : 'TEI edition';
  renderStemma();
  refresh();
- if (previousActiveId && highlight.checked) showDetails(loci.findIndex(locus => locus.id === previousActiveId));
+ if (previousActiveId && highlight.checked) {
+  const index = loci.findIndex(locus => locus.id === previousActiveId);
+  pinned = wasPinned && index >= 0;
+  showDetails(index, !pinned);
+ }
  content.scrollTop = scrollTop;
  if (!preserveView) sourceEditor.scrollTo(0, 0);
 }
@@ -675,6 +686,7 @@ byId('export-file').onchange = async event => {
   edition = undefined;
   loci = [];
   hovered = focused = active = -1;
+  pinned = false;
   content.after(details);
   content.replaceChildren();
   content.hidden = details.hidden = byId('stemma').hidden = true;
