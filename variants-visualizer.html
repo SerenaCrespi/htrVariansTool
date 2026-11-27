@@ -227,7 +227,12 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
 .xml-attribute { color: #824011 }
 .xml-value { color: #216448 }
 .xml-comment { color: #59645f }
-#tei-highlight::highlight(tei-locus) { background-color: #f1dda2 }
+#tei-highlight::highlight(tei-locus) {
+ background-color: #f1dda2;
+ text-decoration-line: underline;
+ text-decoration-color: #6d0f1d;
+ text-decoration-skip-ink: none;
+}
 @media (forced-colors: active) {
  #tei-highlight { visibility: hidden }
  #tei-source, #tei-source::selection { color: revert }
