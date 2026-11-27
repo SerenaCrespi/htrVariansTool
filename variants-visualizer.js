@@ -115,20 +115,26 @@ function highlightSource(reveal = false) {
   highlightedRange = undefined;
   CSS.highlights?.delete('tei-locus');
   if (range) {
-   const selection = document.createRange();
+   const selections = [];
    const walker = document.createTreeWalker(sourceHighlight, NodeFilter.SHOW_TEXT);
    let offset = 0;
-   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const end = offset + node.length;
-    if (offset <= range.start && range.start < end) selection.setStart(node, range.start - offset);
-    if (range.end <= end) {
-     selection.setEnd(node, range.end - offset);
-     break;
+   for (let node = walker.nextNode(); node && offset < range.end; node = walker.nextNode()) {
+    const start = Math.max(0, range.start - offset);
+    const end = Math.min(node.length, range.end - offset);
+    for (const match of node.data.slice(start, end).matchAll(/\S+/gu)) {
+     const selection = document.createRange();
+     selection.setStart(node, start + match.index);
+     selection.setEnd(node, start + match.index + match[0].length);
+     selections.push(selection);
     }
-    offset = end;
+    offset += node.length;
    }
-   if (CSS.highlights) CSS.highlights.set('tei-locus', new Highlight(selection));
-   highlightedRange = {offsets: range, selection};
+   if (CSS.highlights) {
+    const painted = new Highlight();
+    for (const selection of selections) painted.add(selection);
+    CSS.highlights.set('tei-locus', painted);
+   }
+   highlightedRange = {offsets: range, first: selections[0]};
   }
  }
  if (range && reveal) {
@@ -141,7 +147,7 @@ function highlightSource(reveal = false) {
    sourceEditor.scrollTop = Math.max(0, top - sourceEditor.clientHeight / 3);
   }
   syncSourceScroll();
-  const marker = highlightedRange.selection.getClientRects()[0];
+  const marker = highlightedRange.first?.getClientRects()[0];
   const viewport = sourceEditor.getBoundingClientRect();
   if (marker && (marker.left < viewport.left || marker.left + 24 > viewport.left + sourceEditor.clientWidth)) {
    sourceEditor.scrollLeft += marker.left - viewport.left - 12;
