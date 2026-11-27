@@ -199,6 +199,15 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
 }
 .source-actions { display: flex; flex-wrap: wrap; gap: 8px }
 .source-header label { font-weight: 700 }
+.source-validation {
+ display: flex;
+ flex-wrap: wrap;
+ align-items: baseline;
+ gap: 4px 12px;
+ padding: 6px 12px;
+ font-size: 12px;
+}
+.source-validation a { color: var(--forest-deep) }
 #tei-error { margin: 0; padding: 6px 12px; color: #8a1526 }
 .source-editor { position: relative; flex: 1; min-height: 0; overflow: hidden }
 #tei-source, #tei-highlight {
@@ -227,7 +236,8 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
 .xml-attribute { color: #824011 }
 .xml-value { color: #216448 }
 .xml-comment { color: #59645f }
-#tei-highlight::highlight(tei-locus) {
+#tei-highlight::highlight(tei-locus),
+#tei-highlight span::highlight(tei-locus) {
  background-color: #f1dda2;
  text-decoration-line: underline;
  text-decoration-color: #6d0f1d;
@@ -325,10 +335,14 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
      <button class="btn" id="download-tei" type="button">Download TEI</button>
     </div>
    </div>
+   <div class="source-validation">
+    <span id="tei-validation-state" role="status"></span>
+    <a href="https://www.tei-c.org/Vault/P5/4.12.0/doc/tei-p5-doc/en/html/ref-app.html" target="_blank" rel="noopener">TEI P5 rules for &lt;app&gt;</a>
+   </div>
    <p id="tei-error" role="status" hidden></p>
    <div class="source-editor">
     <pre id="tei-highlight" aria-hidden="true"></pre>
-    <textarea id="tei-source" wrap="off" spellcheck="false" aria-describedby="tei-error"></textarea>
+    <textarea id="tei-source" wrap="off" spellcheck="false" aria-describedby="tei-validation-state tei-error"></textarea>
    </div>
   </section>
  </div>
@@ -344,6 +358,6 @@ main:has(#tei-panel:not([hidden])) { max-width: 1600px }
  </aside>
 </div>
 </main>
-<script src="/variants-visualizer.js?v=tei-pinned-selection" defer></script>
+<script src="/variants-visualizer.js?v=tei-continuous-selection" defer></script>
 </body>
 </html>

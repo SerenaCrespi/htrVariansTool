@@ -178,17 +178,25 @@ function highlightSource(reveal = false) {
   if (range) {
    const selections = [];
    const walker = document.createTreeWalker(sourceHighlight, NodeFilter.SHOW_TEXT);
+   let node = walker.nextNode();
    let offset = 0;
-   for (let node = walker.nextNode(); node && offset < range.end; node = walker.nextNode()) {
-    const start = Math.max(0, range.start - offset);
-    const end = Math.min(node.length, range.end - offset);
-    for (const match of node.data.slice(start, end).matchAll(/\S+/gu)) {
-     const selection = document.createRange();
-     selection.setStart(node, start + match.index);
-     selection.setEnd(node, start + match.index + match[0].length);
-     selections.push(selection);
+   function advanceTo(position) {
+    while (position > offset + node.length) {
+     offset += node.length;
+     node = walker.nextNode();
     }
-    offset += node.length;
+   }
+   for (const match of sourceEditor.value.slice(range.start, range.end).matchAll(/[^\n]+/gu)) {
+    const line = match[0].trim();
+    if (!line) continue;
+    const start = range.start + match.index + match[0].length - match[0].trimStart().length;
+    const end = start + line.length;
+    const selection = document.createRange();
+    advanceTo(start + 1);
+    selection.setStart(node, start - offset);
+    advanceTo(end);
+    selection.setEnd(node, end - offset);
+    selections.push(selection);
    }
    if (CSS.highlights) {
     const painted = new Highlight();
@@ -472,13 +480,14 @@ function showDetails(index, revealSource = true) {
  else content.append(details);
 }
 
-function openApparatusAtCaret() {
+function openApparatusAtCaret(explicit = false) {
  const {selectionStart, selectionEnd} = sourceEditor;
- if (pinned || document.activeElement !== sourceEditor || selectionStart !== selectionEnd ||
+ if ((!explicit && pinned) || document.activeElement !== sourceEditor || selectionStart !== selectionEnd ||
      edition?.source !== sourceEditor.value) return;
  const index = loci.findIndex(({range}) => range && range.start <= selectionStart && selectionStart < range.end);
- if (index < 0 || index === active) return;
+ if (index < 0 || (!explicit && index === active)) return;
 
+ if (explicit) pinned = true;
  hovered = focused = -1;
  showDetails(index, false);
  const reading = highlight.checked ? loci[index].button : loci[index].plain;
@@ -573,11 +582,12 @@ function displayEdition(next, preserveView = false) {
  if (!preserveView) sourceEditor.scrollTo(0, 0);
 }
 
-function showSourceError(message = '') {
+function showSourceError(message = '', pending = false) {
+ byId('tei-validation-state').textContent = message ? 'Changes blocked' : pending ? 'Checking TEI…' : 'Valid TEI';
  sourceError.textContent = message;
  sourceError.hidden = !message;
  sourceEditor.setAttribute('aria-invalid', String(Boolean(message)));
- downloadButton.disabled = Boolean(message);
+ downloadButton.disabled = pending || Boolean(message);
 }
 
 function cancelValidation() {
@@ -613,12 +623,12 @@ async function validateSource({original = false} = {}) {
 }
 
 sourceEditor.addEventListener('scroll', syncSourceScroll);
-for (const type of ['selectionchange', 'click', 'keyup']) {
- sourceEditor.addEventListener(type, openApparatusAtCaret);
-}
+sourceEditor.addEventListener('selectionchange', () => openApparatusAtCaret());
+sourceEditor.addEventListener('keyup', () => openApparatusAtCaret());
+sourceEditor.addEventListener('click', () => openApparatusAtCaret(true));
 sourceEditor.addEventListener('input', () => {
  cancelValidation();
- downloadButton.disabled = true;
+ showSourceError('', true);
  colorSource();
  highlightSource();
  previewTimer = setTimeout(validateSource, 300);
@@ -698,8 +708,7 @@ byId('export-file').onchange = async event => {
   sourceEditor.scrollTo(0, 0);
   sourceName = file.name;
   colorSource();
-  showSourceError();
-  downloadButton.disabled = true;
+  showSourceError('', true);
   await validateSource({original: true});
  } catch (error) {
   if (load !== loadNumber) return;
